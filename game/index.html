@@ -1,0 +1,28 @@
+<!doctype html>
+<!--
+  Octavia's Tidepool Kitchen: a cooking game for desktop browsers, keyboard and mouse.
+  Octavia, an eight-armed octopus chef, runs a reef bistro inside a giant clam. Her eight arms
+  are the main resource: each one holds an ingredient or works a station. Chop on the Shell
+  Board, simmer in the Bubble Pot, sear and flip on the Vent Grill, steam in the Kelp Steamer,
+  assemble on the Clam Plate and serve at the Current Window before sea-creature regulars lose
+  patience. Five tide nights, eight recipes, ten ingredients, Spring Tide rushes, Ink Streak
+  combos, a food critic and an upgrade shop. Everything is drawn in Canvas 2D and every sound
+  is synthesised with WebAudio: the game loads no files beyond its own modules and makes no
+  network request.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Octavia's Tidepool Kitchen</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #05191d; overflow: hidden; }
+  body { display: flex; align-items: center; justify-content: center; }
+  canvas { display: block; outline: none; touch-action: none; }
+</style>
+</head>
+<body>
+<canvas id="game" width="1280" height="800" tabindex="0" aria-label="Octavia's Tidepool Kitchen, a cooking game"></canvas>
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>
