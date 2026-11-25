@@ -16,8 +16,8 @@ import { drawOctaviaPortrait } from './octopus.js';
 
 const INK = PALETTE.ink;
 
-/** Deep water with light rays, a sand floor, coral and kelp. */
-export function drawSea(ctx, t, calm) {
+/** Deep water with light rays, a sand floor, coral, kelp and fish schools at the `fish` rows. */
+export function drawSea(ctx, t, calm, fish = [150, 420]) {
   const g = ctx.createLinearGradient(0, 0, 0, 800);
   g.addColorStop(0, '#1b7f95');
   g.addColorStop(0.55, '#0e3b43');
@@ -71,13 +71,13 @@ export function drawSea(ctx, t, calm) {
     const y = 800 - ((t * (20 + (i % 5) * 9) + i * 97) % 820);
     blob(ctx, x + Math.sin(t + i) * 6, y, 2 + (i % 4), 'rgba(214,250,255,0.18)', 'rgba(214,250,255,0.5)', 1);
   }
-  drawFishSchool(ctx, t, calm);
+  drawFishSchool(ctx, t, calm, fish);
 }
 
-/** Two little schools of reef fish drifting across the water. */
-function drawFishSchool(ctx, t, calm) {
+/** Two little schools of reef fish drifting across the water at the given rows. */
+function drawFishSchool(ctx, t, calm, [top, low]) {
   const drift = calm ? 0 : t;
-  for (const [row, speed, col, dir] of [[150, 26, '#ffd166', 1], [420, 18, '#ff9aa8', -1]]) {
+  for (const [row, speed, col, dir] of [[top, 26, '#ffd166', 1], [low, 18, '#ff9aa8', -1]]) {
     for (let i = 0; i < 6; i++) {
       const run = (drift * speed + i * 34) % 1500;
       const x = dir > 0 ? run - 110 : 1390 - run;
@@ -215,7 +215,9 @@ export function drawTitle(ctx, campaign, t, calm) {
     button(ctx, 'settings', 'Settings', 760, 528, 280, 56, { key: 'O' }),
   ];
   const stars = totalStars(campaign);
-  text(ctx, `Campaign: ${stars}/15 stars  -  purse ${campaign.purse} coins`, 900, 624, { size: 16, color: PALETTE.pearl, align: 'center', line: 4 });
+  const fresh = stars === 0 && campaign.purse === 0;
+  const status = fresh ? 'Five tide nights to master  -  15 stars to win' : `Campaign: ${stars}/15 stars  -  purse ${campaign.purse} coins`;
+  text(ctx, status, 900, 624, { size: 16, color: PALETTE.pearl, align: 'center', line: 4 });
   const regulars = ['puffy', 'shelby', 'twins', 'tortuga', 'mantis'];
   regulars.forEach((id, i) => {
     const x = 120 + i * 92;
@@ -227,7 +229,7 @@ export function drawTitle(ctx, campaign, t, calm) {
     ctx.stroke();
   });
   text(ctx, 'Tonight\u2019s regulars', 304, 694, { size: 16, color: PALETTE.gold, align: 'center', line: 4 });
-  text(ctx, 'Keyboard and mouse  -  works offline  -  progress saves', 900, 760, { size: 14, color: 'rgba(255,246,230,0.8)', align: 'center', line: 3 });
+  label(ctx, 'Keyboard and mouse  -  works offline  -  progress saves', 900, 764, 15, INK, 'center', 800);
   return buttons;
 }
 
@@ -261,7 +263,7 @@ function drawClamStage(ctx, x, y) {
 }
 
 /** Positions of the five nights on the reef map. */
-const MAP_NODES = [[150, 560], [330, 430], [520, 560], [700, 420], [880, 520]];
+const MAP_NODES = [[150, 500], [330, 430], [520, 560], [700, 420], [880, 520]];
 
 /** Each night's mood as light, mid and deep tints: turquoise, sunset coral, indigo, storm teal, royal gold. */
 const NIGHT_MOODS = [
@@ -400,7 +402,7 @@ function drawPadlock(ctx, x, y) {
  * selected night, its details and the shop door.
  */
 export function drawMap(ctx, campaign, selected, t, calm) {
-  drawSea(ctx, t, calm);
+  drawSea(ctx, t, calm, [232, 470]);
   drawLogo(ctx, 470, 72, 0.62);
   text(ctx, 'An eight-armed octopus chef runs a reef bistro inside a giant clam', 470, 160, { size: 17, color: PALETTE.pearl, align: 'center', line: 4 });
   text(ctx, 'REEF MAP', 470, 204, { size: 24, color: PALETTE.foam, align: 'center', line: 5 });
@@ -551,6 +553,7 @@ export function drawShop(ctx, campaign, x, y, w) {
       panel(ctx, bx, ry + 16, 96, 36, { fill: afford ? PALETTE.gold : '#6b7f84', stroke: INK, r: 10, line: 2.5, shadow: false });
       keycap(ctx, String(i + 1), bx + 18, ry + 34, { size: 12 });
       label(ctx, `${u.cost} c`, bx + 60, ry + 40, 16, INK, 'center', 900);
+      if (!afford) label(ctx, `need ${u.cost - campaign.purse} c`, bx + 48, ry + 65, 12, '#ffb3a6', 'center', 800);
       buttons.push({ id: `buy:${u.id}`, x: bx, y: ry + 16, w: 96, h: 36, disabled: !afford });
     }
   });

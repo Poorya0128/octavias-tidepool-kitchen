@@ -6,21 +6,22 @@
 
 import { LAYOUT, SLOT_TARGETS } from './config.js';
 import { CUSTOMERS } from './data/customers.js';
-import { INGREDIENTS } from './data/ingredients.js';
+import { INGREDIENT, INGREDIENTS } from './data/ingredients.js';
 import { RECIPE } from './data/recipes.js';
 import { binPoint, holdingArms } from './arms.js';
 import { missingParts, slotPoint, ticketForPlate } from './orders.js';
+import { STATION_KINDS } from './stations.js';
 
 /** The lesson lasts this many served dishes; the goodbye stays up this many seconds. */
 const LESSON_DISHES = 2;
 const GOODBYE_TIME = 3;
 
-/** Each preparation's stations, the key that works them and the coach's verb. */
+/** Each preparation's stations, the key that works them, the coach's verb and where it happens. */
 const HOW = {
-  chop: { stations: ['board'], key: 'Q', verb: 'Chop' },
-  simmer: { stations: ['pot0', 'pot1'], key: 'W', verb: 'Simmer' },
-  sear: { stations: ['grill'], key: 'E', verb: 'Sear' },
-  steam: { stations: ['steamer'], key: 'R', verb: 'Steam' },
+  chop: { stations: ['board'], key: 'Q', verb: 'Chop', where: 'on the Shell Board' },
+  simmer: { stations: ['pot0', 'pot1'], key: 'W', verb: 'Simmer', where: 'in a Bubble Pot' },
+  sear: { stations: ['grill'], key: 'E', verb: 'Sear', where: 'on the Vent Grill' },
+  steam: { stations: ['steamer'], key: 'R', verb: 'Steam', where: 'in the Kelp Steamer' },
 };
 const STATION_KEY = { board: 'Q', pot0: 'W', pot1: 'W', grill: 'E', steamer: 'R' };
 const PLATE_AT = { x: LAYOUT.plate.x, y: LAYOUT.plate.y - 12 };
@@ -43,7 +44,11 @@ function stationPoint(state, prep) {
   return SLOT_TARGETS[HOW[prep].stations[0]][0];
 }
 
-/** The best next move over the dish's missing parts: take ready food, lay held food, cook it, grab it, else wait. */
+/**
+ * The best next move over the dish's missing parts: take ready food, lay held food, cook it, grab
+ * it, else wait. The bubble shows the key, so texts never say "press"; waits carry no key (a W
+ * pressed too early would stop the stirring).
+ */
 function partHint(state, recipe, say) {
   const held = holdingArms(state).map((a) => a.item);
   const food = stationFood(state).filter((f) => f.item.phase !== 'burnt');
@@ -51,27 +56,27 @@ function partHint(state, recipe, say) {
   let best = null;
   const offer = (rank, text, target, key) => { if (!best || rank < best.rank) best = { rank, text, target, key }; };
   for (const [ing, prep] of missingParts(recipe.id, state.plate.parts)) {
+    const name = INGREDIENT[ing].name;
     if (claim(held, (it) => it.ing === ing && it.prep === prep)) {
-      offer(1, 'Lay it on the Clam Plate: press Space', PLATE_AT, 'Space');
+      offer(1, `Lay the ${name} on the Clam Plate`, PLATE_AT, 'Space');
       continue;
     }
     const at = claim(food, (f) => f.item.ing === ing && f.item.prep === prep);
     if (at) {
       const key = STATION_KEY[at.id];
       const point = SLOT_TARGETS[at.id][at.slot];
-      if (at.item.phase === 'perfect') offer(0, `PERFECT! Press ${key} to take it`, point, key);
-      else if (at.item.phase === 'over') offer(0, `Take it before it burns: press ${key}`, point, key);
-      else if (at.item.phase === 'chop') offer(4, 'An arm is chopping it: one moment', point, null);
-      else if (prep === 'sear' && !at.item.flipped) offer(4, 'Wait for FLIP!, then press E', point, 'E');
-      else offer(4, `Wait for PERFECT, then press ${key} to take it`, point, key);
+      if (at.item.phase === 'perfect') offer(0, `PERFECT! Take the ${name} now`, point, key);
+      else if (at.item.phase === 'over') offer(0, `Take the ${name} before it burns!`, point, key);
+      else if (at.item.phase === 'chop') offer(4, `An arm is chopping the ${name}`, point, null);
+      else offer(4, `Wait for ${prep === 'sear' && !at.item.flipped ? 'FLIP!' : 'PERFECT'} ${HOW[prep].where}`, point, null);
       continue;
     }
     if (HOW[prep] && claim(held, (it) => it.ing === ing && it.prep === null)) {
-      offer(2, `${HOW[prep].verb} it: press ${HOW[prep].key}`, stationPoint(state, prep), HOW[prep].key);
+      offer(2, `${HOW[prep].verb} the ${name} ${HOW[prep].where}`, stationPoint(state, prep), HOW[prep].key);
       continue;
     }
     const i = INGREDIENTS.findIndex((x) => x.id === ing);
-    offer(3, `Grab ${INGREDIENTS[i].name}: press ${INGREDIENTS[i].key} or click its crate`, binPoint(i), INGREDIENTS[i].key);
+    offer(3, `Grab the ${name} from its crate`, binPoint(i), INGREDIENTS[i].key);
   }
   return say(best.text, best.target, best.key);
 }
@@ -83,7 +88,7 @@ function partHint(state, recipe, say) {
  */
 export function coachHint(state) {
   if (state.stats.served >= LESSON_DISHES) {
-    return state.time - (state.moments.serve ?? 0) < GOODBYE_TIME ? hint("You're a natural, Chef! The kitchen is all yours.") : null;
+    return state.time - (state.moments.serve ?? 0) < GOODBYE_TIME ? hint("You're a natural! The kitchen is all yours.") : null;
   }
   const ticket = state.tickets.find((t) => t.id === state.selectedTicket);
   const recipe = RECIPE[state.plate.recipeId ?? ticket?.recipeId];
@@ -92,17 +97,19 @@ export function coachHint(state) {
   if (urgent) {
     const key = STATION_KEY[urgent.id];
     const point = SLOT_TARGETS[urgent.id][urgent.slot];
-    return urgent.item.phase === 'flip' ? say('FLIP! Press E before it chars', point, 'E') : say(`Burnt! Press ${key} to clear it`, point, key);
+    return urgent.item.phase === 'flip'
+      ? say(`FLIP the ${INGREDIENT[urgent.item.ing].name} before it chars!`, point, 'E')
+      : say(`Burnt! Clear the ${STATION_KINDS[urgent.id].name}`, point, key);
   }
-  if (state.ink.meter >= 1 && !state.ink.active) return say('Press I for an Ink Burst!', INK_AT, 'I');
+  if (state.ink.meter >= 1 && !state.ink.active) return say('Ink is full! Fire an Ink Burst', INK_AT, 'I');
   const ready = state.pass.findIndex((p) => ticketForPlate(state, p));
   if (ready >= 0) {
     const plate = state.pass[ready];
     const total = RECIPE[plate.recipeId].parts.length + 2;
-    return hint(`Serve ${CUSTOMERS[ticketForPlate(state, plate).customerId].name}: press S`, slotPoint(ready), 'S', total, total);
+    return hint(`Serve the plate to ${CUSTOMERS[ticketForPlate(state, plate).customerId].name}`, slotPoint(ready), 'S', total, total);
   }
-  if (!recipe) return hint(state.stats.served ? 'Nice! The next diner is swimming in...' : 'Welcome, Chef! Your first diner is swimming in...');
-  if (!missingParts(recipe.id, state.plate.parts).length) return say(`Finish the dish: press Space to ${recipe.finish}`, PLATE_AT, 'Space');
+  if (!recipe) return hint(state.stats.served ? 'Nice! The next diner is swimming in...' : 'Welcome, Chef! Your first diner swims in...');
+  if (!missingParts(recipe.id, state.plate.parts).length) return say(`All parts in: ${recipe.finish} the dish!`, PLATE_AT, 'Space');
   return partHint(state, recipe, say);
 }
 

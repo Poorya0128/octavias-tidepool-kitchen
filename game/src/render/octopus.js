@@ -7,7 +7,7 @@
 import { LAYOUT, PALETTE } from '../config.js';
 import { ARM_HOLD, ARM_REST, ARM_ROOTS } from '../arms.js';
 import { patienceShare } from '../orders.js';
-import { blob, sparkle, TAU } from './draw.js';
+import { blob, clamp, sparkle, TAU } from './draw.js';
 import { drawFinishedDish, drawIngredient } from './food.js';
 
 const INK = PALETTE.ink;
@@ -90,7 +90,8 @@ function curlTip(pts, side, curl) {
 
 /**
  * An arm's centre line: a cubic from root to tip that sags on short arms and, on long reaches,
- * bows up over the counter to come down onto the target, with a slow S-wave travelling along it.
+ * bows up over the counter to come down onto the target (swinging wide of the Clam Plate when it
+ * dips into a crate below it), with a slow S-wave travelling along it.
  * Returns the points and how many belong to the reach (a curled tip adds more after them).
  */
 function armSpine(root, tip, i, t, curl) {
@@ -100,8 +101,15 @@ function armSpine(root, tip, i, t, curl) {
   const d = Math.hypot(dx, dy) || 1;
   const long = Math.min(1, Math.max(0, (d - 120) / 260));
   const bow = long * Math.min(120, d * 0.3) * (Math.abs(dx) / d);
-  const c1 = { x: root.x + dx * 0.3 + side * 12 * (1 - long), y: root.y + 50 * (1 - long) + dy * 0.1 - bow * 0.35 };
-  const c2 = { x: tip.x - dx * 0.28, y: tip.y - 36 - bow * 1.25 + Math.sin(t * 2 + i) * 5 };
+  let c1 = { x: root.x + dx * 0.3 + side * 12 * (1 - long), y: root.y + 50 * (1 - long) + dy * 0.1 - bow * 0.35 };
+  let c2 = { x: tip.x - dx * 0.28, y: tip.y - 36 - bow * 1.25 + Math.sin(t * 2 + i) * 5 };
+  const plate = LAYOUT.plate;
+  const swing = clamp((tip.y - plate.y + 70) / 90, 0, 1) * clamp((plate.w / 2 + 90 - Math.abs(tip.x - plate.x)) / 60, 0, 1);
+  if (swing > 0) {
+    const sx = plate.x + clamp((tip.x - plate.x) / 30, -1, 1) * (plate.w / 2 + 80);
+    c1 = mix(c1, { x: sx, y: root.y + 90 }, swing);
+    c2 = mix(c2, { x: sx, y: tip.y - 10 }, swing);
+  }
   const n = 20 + Math.round(16 * long);
   const raw = [];
   for (let k = 0; k <= n; k++) raw.push(bez(root, c1, c2, tip, k / n));
@@ -604,13 +612,6 @@ export function drawOctavia(ctx, state, view, t) {
     const tip = view[i];
     if (arm.state === 'hold' && arm.item) {
       drawIngredient(ctx, arm.item.ing, tip.x, tip.y - 14, 34, arm.item.prep, t);
-      ctx.strokeStyle = SKIN_DARK;
-      ctx.lineWidth = 5;
-      ctx.lineCap = 'round';
-      ctx.beginPath();
-      ctx.arc(tip.x, tip.y - 8, 10, 0.3, Math.PI - 0.3);
-      ctx.stroke();
-      ctx.lineCap = 'butt';
       if (arm.item.quality === 'perfect') {
         ctx.strokeStyle = 'rgba(127,240,255,0.9)';
         ctx.lineWidth = 2;

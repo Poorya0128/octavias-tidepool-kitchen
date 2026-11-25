@@ -16,13 +16,13 @@ const BUYS = { 0: ['secondPot'], 1: ['calmingCoral'], 2: ['quickArms'] };
 
 /**
  * Service scenes: the night, the chef's style and the step where play freezes. The steps come
- * from a search for a frame with a plate at the window, a dish half built, food just turned
- * PERFECT and at least four of Octavia's arms at work.
+ * from a search for a frame with food on every station, at least four of Octavia's arms at work,
+ * a dish half built, plates at the window, food just turned PERFECT and no toast in the way.
  */
 const PLAYS = {
-  cover: { night: 3, frames: 6730, chef: { cadence: 0.66, serveAfter: 16, focus: 4, takeWithin: 0.7 } },
-  moon: { night: 2, frames: 5202, chef: { cadence: 0.3, serveAfter: 12, focus: 4 } },
-  critic: { night: 4, frames: 2948, chef: { cadence: 0.56, serveAfter: 16, focus: 4, takeWithin: 0.7 } },
+  cover: { night: 3, frames: 6640, chef: { cadence: 0.55, serveAfter: 16, focus: 4, takeWithin: 0.4 } },
+  moon: { night: 2, frames: 8312, chef: { cadence: 0.47, serveAfter: 8, focus: 3, takeWithin: 0.4 } },
+  critic: { night: 4, frames: 7489, chef: { cadence: 0.5, serveAfter: 18, focus: 5, takeWithin: 0.4 } },
 };
 
 /**
@@ -52,9 +52,9 @@ function playToFrame(app, seed, { night: nightIndex, frames, chef: chefOpts }) {
 }
 
 const SCENES = {
-  /** Storm Tide in a Spring Tide rush: six tickets, a rice bowl half built, milk turning PERFECT and Puffy's skewer at the window. */
+  /** Storm Tide in a Spring Tide rush: every station cooking, five arms busy, a pearl bowl half built, Puffy's skewer and Shelby's kelp roll at the window. */
   cover: (app, seed) => playToFrame(app, seed, PLAYS.cover),
-  /** Moon Tide: the Seahorse Twins' salad waits at the window while a pudding comes together and milk turns PERFECT. */
+  /** Moon Tide in a rush: the Seahorse Twins' pudding waits at the window while a kelp roll comes together and every station cooks. */
   moon: (app, seed) => playToFrame(app, seed, PLAYS.moon),
   /** The title header over the reef map, three nights into the campaign. */
   map(app, seed) {
@@ -63,7 +63,7 @@ const SCENES = {
     app.mapSel = 3;
     app.t = 4;
   },
-  /** King Tide in a Spring Tide rush: Madame Mantis rates live while her platter waits on its last part, PERFECT in the steamer. */
+  /** King Tide: Madame Mantis rates live while her Grand Reef Platter takes shape on the Clam Plate and every station cooks. */
   critic: (app, seed) => playToFrame(app, seed, PLAYS.critic),
   /** Results of Storm Tide with stars, stats and the Tide Shop. */
   results(app, seed) {

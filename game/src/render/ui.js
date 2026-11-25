@@ -10,12 +10,54 @@ import { INGREDIENT, PREPS } from '../data/ingredients.js';
 import { RECIPE } from '../data/recipes.js';
 import { missingParts, patienceShare } from '../orders.js';
 import { nextStreakTier, streakMultiplier } from '../scoring.js';
-import { blob, check, clock, keycap, label, panel, paragraph, ring, roundRect, sparkle, star, starRow, TAU, text } from './draw.js';
+import { blob, check, clock, font, keycap, label, panel, ring, roundRect, sparkle, star, starRow, TAU, text } from './draw.js';
 import { drawCustomer } from './customers.js';
 import { drawFinishedDish, drawIngredient } from './food.js';
 import { drawOctaviaPortrait } from './octopus.js';
 
 const INK = PALETTE.ink;
+
+/** Offscreen canvases for static ticket and HUD art, painted once at 2x and reused every frame. */
+const sprites = new Map();
+
+/**
+ * Draws the static art `key` as a w x h image with its top-left at (x, y); `paint(g)` fills it
+ * in local coordinates the first time. Without a DOM it paints straight onto ctx.
+ */
+function sprite(ctx, key, x, y, w, h, paint) {
+  if (typeof document === 'undefined') {
+    ctx.save();
+    ctx.translate(x, y);
+    paint(ctx);
+    ctx.restore();
+    return;
+  }
+  let c = sprites.get(key);
+  if (!c) {
+    c = document.createElement('canvas');
+    c.width = w * 2;
+    c.height = h * 2;
+    const g = c.getContext('2d');
+    g.scale(2, 2);
+    paint(g);
+    sprites.set(key, c);
+  }
+  ctx.drawImage(c, x, y, w, h);
+}
+
+/** A recipe's finished dish centred on (x, y) at width w, cached (the ticket icons never change). */
+function dishIcon(ctx, recipeId, x, y, w) {
+  const hw = Math.ceil(w * 0.66) + 4;
+  const up = Math.ceil(w * 0.64) + 4;
+  const down = Math.ceil(w * 0.5) + 4;
+  sprite(ctx, `dish:${recipeId}:${w}`, x - hw, y - up, hw * 2, up + down, (g) => drawFinishedDish(g, recipeId, hw, up, w));
+}
+
+/** An ingredient icon centred on (x, y) in a box about s wide, cached per preparation. */
+function ingredientIcon(ctx, ing, prep, x, y, s) {
+  const half = Math.ceil(s * 0.8) + 2;
+  sprite(ctx, `ing:${ing}:${prep}:${s}`, x - half, y - half, half * 2, half * 2, (g) => drawIngredient(g, ing, half, half, s, prep, 0));
+}
 
 /** Colour of a patience share: green, gold, then red. */
 export function patienceColor(share) {
@@ -25,26 +67,11 @@ export function patienceColor(share) {
 /** The rail of shell-shaped tickets across the top. */
 export function drawOrderBoard(ctx, state, t) {
   const b = LAYOUT.board;
-  const wood = ctx.createLinearGradient(12, b.y, 132, b.y + b.h);
-  wood.addColorStop(0, '#8a5a34');
-  wood.addColorStop(1, '#4a2f1c');
-  panel(ctx, 12, b.y, 120, b.h, { fill: wood, stroke: INK, r: 14, line: 3 });
-  ctx.strokeStyle = 'rgba(40,22,10,0.35)';
-  ctx.lineWidth = 2;
-  for (const gy of [44, 70, 96]) {
-    ctx.beginPath();
-    ctx.moveTo(20, b.y + gy);
-    ctx.quadraticCurveTo(72, b.y + gy + 4, 124, b.y + gy - 1);
-    ctx.stroke();
-  }
-  ctx.strokeStyle = 'rgba(255,209,102,0.55)';
-  roundRect(ctx, 17, b.y + 5, 110, b.h - 10, 10);
-  ctx.stroke();
-  text(ctx, 'CURRENT', 72, b.y + 36, { size: 18, color: PALETTE.gold, align: 'center', line: 4 });
-  text(ctx, 'BOARD', 72, b.y + 58, { size: 18, color: PALETTE.gold, align: 'center', line: 4 });
+  sprite(ctx, 'boardSign', 8, b.y - 4, 132, b.h + 12, (g) => {
+    g.translate(-8, 4 - b.y);
+    paintBoardSign(g, b);
+  });
   label(ctx, `${state.tickets.length} waiting`, 72, b.y + 84, 14, PALETTE.pearl, 'center', 800);
-  keycap(ctx, 'Tab', 50, b.y + 110, { size: 12 });
-  label(ctx, 'next', 86, b.y + 115, 13, PALETTE.pearl, 'center', 800);
   ctx.strokeStyle = '#c8a26b';
   ctx.lineWidth = 5;
   ctx.beginPath();
@@ -72,6 +99,29 @@ export function drawOrderBoard(ctx, state, t) {
       }
     }
   }
+}
+
+/** The wooden CURRENT BOARD sign left of the tickets, with its Tab hint (everything but the count). */
+function paintBoardSign(g, b) {
+  const wood = g.createLinearGradient(12, b.y, 132, b.y + b.h);
+  wood.addColorStop(0, '#8a5a34');
+  wood.addColorStop(1, '#4a2f1c');
+  panel(g, 12, b.y, 120, b.h, { fill: wood, stroke: INK, r: 14, line: 3 });
+  g.strokeStyle = 'rgba(40,22,10,0.35)';
+  g.lineWidth = 2;
+  for (const gy of [44, 70, 96]) {
+    g.beginPath();
+    g.moveTo(20, b.y + gy);
+    g.quadraticCurveTo(72, b.y + gy + 4, 124, b.y + gy - 1);
+    g.stroke();
+  }
+  g.strokeStyle = 'rgba(255,209,102,0.55)';
+  roundRect(g, 17, b.y + 5, 110, b.h - 10, 10);
+  g.stroke();
+  text(g, 'CURRENT', 72, b.y + 36, { size: 18, color: PALETTE.gold, align: 'center', line: 4 });
+  text(g, 'BOARD', 72, b.y + 58, { size: 18, color: PALETTE.gold, align: 'center', line: 4 });
+  keycap(g, 'Tab', 50, b.y + 110, { size: 12 });
+  label(g, 'next', 86, b.y + 115, 13, PALETTE.pearl, 'center', 800);
 }
 
 /** A faint speckle-and-fibre pattern that makes tickets read as paper (built once, lazily). */
@@ -143,37 +193,10 @@ function drawTicket(ctx, state, ticket, x, y, t) {
     ctx.lineWidth = 9;
     ctx.stroke(shape);
   }
-  const paper = ctx.createLinearGradient(0, ty, 0, ty + tk.h);
-  paper.addColorStop(0, ticket.critic ? '#f8f1ff' : '#fffaf0');
-  paper.addColorStop(1, ticket.critic ? '#e2d3fa' : '#f3e2c4');
-  ctx.fillStyle = paper;
-  ctx.fill(shape);
-  const grain = paperPattern(ctx);
-  if (grain) {
-    ctx.fillStyle = grain;
-    ctx.fill(shape);
-  }
-  ctx.lineWidth = 3;
-  ctx.strokeStyle = INK;
-  ctx.stroke(shape);
-  if (ticket.critic) {
-    ctx.save();
-    ctx.translate(tx + tk.w / 2, ty + tk.h / 2 + 4);
-    ctx.scale((tk.w - 10) / tk.w, (tk.h - 12) / tk.h);
-    ctx.translate(-(tx + tk.w / 2), -(ty + tk.h / 2));
-    ctx.strokeStyle = PALETTE.gold;
-    ctx.lineWidth = 3;
-    ctx.stroke(shape);
-    ctx.restore();
-  }
-  const peg = ctx.createLinearGradient(0, ty - 7, 0, ty + 8);
-  peg.addColorStop(0, selected ? '#fff0b8' : ticket.critic ? '#9a78c4' : '#ffb08f');
-  peg.addColorStop(1, selected ? '#e0a92e' : ticket.critic ? '#4a3463' : PALETTE.coralDark);
-  ctx.fillStyle = peg;
-  roundRect(ctx, tx + tk.w / 2 - 14, ty - 7, 28, 15, 5);
-  ctx.fill();
-  ctx.lineWidth = 2.5;
-  ctx.stroke();
+  const kind = ticket.critic ? 'critic' : 'paper';
+  sprite(ctx, `ticket:${kind}`, tx - 4, ty - 4, tk.w + 8, tk.h + 8, (g) => paintTicketPaper(g, ticket.critic));
+  const peg = selected ? 'selected' : kind;
+  sprite(ctx, `peg:${peg}`, tx + tk.w / 2 - 17, ty - 10, 34, 21, (g) => paintPeg(g, PEGS[peg]));
   const pr = 22;
   const px = tx + 28;
   const py = ty + 40;
@@ -186,7 +209,7 @@ function drawTicket(ctx, state, ticket, x, y, t) {
   ctx.stroke();
   ring(ctx, px, py, pr + 5, share, patienceColor(share), 6, 'rgba(59,42,77,0.3)');
   label(ctx, `#${ticket.id}`, tx + tk.w - 8, ty + 26, 14, INK, 'right', 900);
-  drawFinishedDish(ctx, ticket.recipeId, tx + tk.w - 42, ty + 54, 66);
+  dishIcon(ctx, ticket.recipeId, tx + tk.w - 42, ty + 54, 66);
   label(ctx, CUSTOMERS[ticket.customerId].name, tx + 8, ty + 78, 12, ticket.critic ? '#7a3fbf' : '#5a4470', 'left', 800);
   text(ctx, recipe.name, tx + 8, ty + 92, { size: 13, color: INK, outline: null, weight: 900, maxWidth: tk.w - 22 });
   const onPlate = state.plate.recipeId === ticket.recipeId ? state.plate.parts : [];
@@ -197,7 +220,7 @@ function drawTicket(ctx, state, ticket, x, y, t) {
     const sx = tx + 8 + k * sw + sw / 2;
     const sy = ty + tk.h - 10;
     const done = !missing.some(([i2, p2]) => i2 === ing && p2 === prep) && onPlate.length > 0;
-    drawIngredient(ctx, ing, sx, sy, 17, prep, t);
+    ingredientIcon(ctx, ing, prep, sx, sy, 17);
     if (done) check(ctx, sx + 6, sy - 6, 5);
   });
   const fx = tx + 8 + recipe.parts.length * sw + sw / 2;
@@ -206,8 +229,58 @@ function drawTicket(ctx, state, ticket, x, y, t) {
     starRow(ctx, tx + tk.w / 2, ty + 9, 6, state.critic.live ?? 0);
   }
   if (ticket.changed && state.time - ticket.born < 999) {
-    label(ctx, 'NEW ORDER', tx + tk.w - 8, ty + 40, 10, PALETTE.coralDark, 'right', 900);
+    const cx = tx + tk.w / 2;
+    ctx.fillStyle = PALETTE.coralDark;
+    roundRect(ctx, cx - 45, ty - 10, 90, 21, 10.5);
+    ctx.fill();
+    ctx.lineWidth = 2.5;
+    ctx.strokeStyle = INK;
+    ctx.stroke();
+    label(ctx, 'NEW ORDER', cx, ty + 1, 12, PALETTE.pearl, 'center', 900, 'middle');
   }
+}
+
+/** Peg colours (top and bottom of the gradient) for a selected, critic and plain ticket. */
+const PEGS = { selected: ['#fff0b8', '#e0a92e'], critic: ['#9a78c4', '#4a3463'], paper: ['#ffb08f', PALETTE.coralDark] };
+
+/** A ticket's paper with its top-left at (4, 4): grained and ink-outlined, gold-framed for the critic. */
+function paintTicketPaper(g, critic) {
+  const tk = LAYOUT.ticket;
+  const shape = ticketPath(4, 4, tk.w, tk.h);
+  const paper = g.createLinearGradient(0, 4, 0, 4 + tk.h);
+  paper.addColorStop(0, critic ? '#f8f1ff' : '#fffaf0');
+  paper.addColorStop(1, critic ? '#e2d3fa' : '#f3e2c4');
+  g.fillStyle = paper;
+  g.fill(shape);
+  const grain = paperPattern(g);
+  if (grain) {
+    g.fillStyle = grain;
+    g.fill(shape);
+  }
+  g.lineJoin = 'round';
+  g.lineWidth = 3;
+  g.strokeStyle = INK;
+  g.stroke(shape);
+  if (critic) {
+    g.translate(4 + tk.w / 2, 8 + tk.h / 2);
+    g.scale((tk.w - 10) / tk.w, (tk.h - 12) / tk.h);
+    g.translate(-(4 + tk.w / 2), -(4 + tk.h / 2));
+    g.strokeStyle = PALETTE.gold;
+    g.stroke(shape);
+  }
+}
+
+/** The ticket's peg at (3, 3) in a 34 x 21 box. */
+function paintPeg(g, [top, bottom]) {
+  const peg = g.createLinearGradient(0, 3, 0, 18);
+  peg.addColorStop(0, top);
+  peg.addColorStop(1, bottom);
+  g.fillStyle = peg;
+  roundRect(g, 3, 3, 28, 15, 5);
+  g.fill();
+  g.lineWidth = 2.5;
+  g.strokeStyle = INK;
+  g.stroke();
 }
 
 /** The tide-clock sand dial, night number, coins and Ink Streak. */
@@ -240,7 +313,7 @@ export function drawHud(ctx, state, t) {
   ctx.strokeStyle = splat ? PALETTE.gold : INK;
   ctx.stroke();
   text(ctx, `INK x${mult}`, sx + 6, sy + 9, { size: 17, color: splat ? PALETTE.gold : PALETTE.pearl, line: 3, maxWidth: 64 });
-  label(ctx, next ? `${state.streak}/${next}` : 'MAX', sx + 104, sy + 8, 11, PALETTE.pearl, 'right', 800);
+  label(ctx, next ? `${state.streak}/${next}` : 'MAX', sx + 104, sy + 8, 12, PALETTE.pearl, 'right', 800);
   drawStatusStrip(ctx, state);
   drawPauseButton(ctx);
 }
@@ -300,32 +373,8 @@ function drawTideClock(ctx, state, cx, cy, r, t) {
   ctx.ellipse(cx - r * 0.3, cy - r * 0.45, r * 0.55, r * 0.3, -0.5, 0, TAU);
   ctx.fill();
   ctx.restore();
-  const brass = ctx.createLinearGradient(cx - r, cy - r, cx + r, cy + r);
-  brass.addColorStop(0, '#fff0b8');
-  brass.addColorStop(0.5, '#d9a84e');
-  brass.addColorStop(1, '#8a6424');
-  ctx.lineWidth = 9;
-  ctx.strokeStyle = brass;
-  ctx.beginPath();
-  ctx.arc(cx, cy, r + 2, 0, TAU);
-  ctx.stroke();
-  ctx.lineWidth = 2.5;
-  ctx.strokeStyle = INK;
-  for (const rr of [r - 2.5, r + 6.5]) {
-    ctx.beginPath();
-    ctx.arc(cx, cy, rr, 0, TAU);
-    ctx.stroke();
-  }
-  ctx.strokeStyle = 'rgba(255,246,230,0.85)';
-  for (let i = 0; i < 12; i++) {
-    const a = (i / 12) * TAU;
-    const inner = i % 3 ? r - 9 : r - 14;
-    ctx.lineWidth = i % 3 ? 2 : 3.5;
-    ctx.beginPath();
-    ctx.moveTo(cx + Math.cos(a) * inner, cy + Math.sin(a) * inner);
-    ctx.lineTo(cx + Math.cos(a) * (r - 4), cy + Math.sin(a) * (r - 4));
-    ctx.stroke();
-  }
+  const half = r + 10;
+  sprite(ctx, `clockRim:${r}`, cx - half, cy - half, half * 2, half * 2, (g) => paintClockRim(g, half, half, r));
   const hand = -Math.PI / 2 + (1 - frac) * TAU;
   ctx.lineCap = 'round';
   for (const [w, col] of [[7, INK], [3.5, PALETTE.coral]]) {
@@ -340,7 +389,37 @@ function drawTideClock(ctx, state, cx, cy, r, t) {
   blob(ctx, cx, cy, 5, PALETTE.gold, INK, 2);
   const size = urgent ? 31 + pulse * 3 : 31;
   text(ctx, clock(left), cx, cy + 11, { size, color: urgent ? '#ffe3a3' : PALETTE.pearl, align: 'center', line: 7 });
-  text(ctx, 'TIDE', cx, cy + 30, { size: 10, color: urgent ? '#ffd0c4' : PALETTE.foam, align: 'center', line: 3 });
+  text(ctx, 'TIDE', cx, cy + 32, { size: 12, color: urgent ? '#ffd0c4' : PALETTE.foam, align: 'center', line: 3 });
+}
+
+/** The tide clock's brass rim and hour ticks around (cx, cy). */
+function paintClockRim(g, cx, cy, r) {
+  const brass = g.createLinearGradient(cx - r, cy - r, cx + r, cy + r);
+  brass.addColorStop(0, '#fff0b8');
+  brass.addColorStop(0.5, '#d9a84e');
+  brass.addColorStop(1, '#8a6424');
+  g.lineWidth = 9;
+  g.strokeStyle = brass;
+  g.beginPath();
+  g.arc(cx, cy, r + 2, 0, TAU);
+  g.stroke();
+  g.lineWidth = 2.5;
+  g.strokeStyle = INK;
+  for (const rr of [r - 2.5, r + 6.5]) {
+    g.beginPath();
+    g.arc(cx, cy, rr, 0, TAU);
+    g.stroke();
+  }
+  g.strokeStyle = 'rgba(255,246,230,0.85)';
+  for (let i = 0; i < 12; i++) {
+    const a = (i / 12) * TAU;
+    const inner = i % 3 ? r - 9 : r - 14;
+    g.lineWidth = i % 3 ? 2 : 3.5;
+    g.beginPath();
+    g.moveTo(cx + Math.cos(a) * inner, cy + Math.sin(a) * inner);
+    g.lineTo(cx + Math.cos(a) * (r - 4), cy + Math.sin(a) * (r - 4));
+    g.stroke();
+  }
 }
 
 /** Under the timer: Madame Mantis's live rating on critic nights, else the coins to the next star. */
@@ -441,7 +520,7 @@ function drawInkMeter(ctx, state, t) {
   keycap(ctx, 'I', b.x + 82, b.y + 50, { size: 15, fill: full ? PALETTE.gold : PALETTE.pearl });
   const status = ink.active ? `${Math.ceil(Math.max(0, ink.endsAt - state.time))}s` : full ? 'GO!' : `${Math.floor(share * 100)}%`;
   text(ctx, status, b.x + 82, b.y + 80, { size: full && !ink.active ? 14 + pulse * 2 : 14, color: live ? PALETTE.gold : PALETTE.pearl, align: 'center', line: 3 });
-  label(ctx, ink.active ? 'patience held' : full ? 'press I!' : 'perfect cooks', b.x + b.w / 2, b.y + 102, 11, live ? '#f3e8ff' : 'rgba(226,204,255,0.75)', 'center', 800);
+  label(ctx, ink.active ? 'patience held' : full ? 'press I!' : 'perfect cooks', b.x + b.w / 2, b.y + 102, 12, live ? '#f3e8ff' : 'rgba(226,204,255,0.75)', 'center', 800);
 }
 
 /** The eight arm slots (free, holding an item, chopping or stirring), with the Ink Burst vial below. */
@@ -455,22 +534,24 @@ export function drawArmSlots(ctx, state, t) {
   state.arms.forEach((arm, i) => {
     const y = a.y + 52 + i * 39;
     const busy = arm.state !== 'idle';
-    if (busy) {
-      const skin = ctx.createLinearGradient(0, y, 0, y + 34);
-      skin.addColorStop(0, '#ffd0c4');
-      skin.addColorStop(1, '#ff9a88');
-      ctx.fillStyle = skin;
-    } else ctx.fillStyle = 'rgba(255,246,230,0.1)';
-    roundRect(ctx, a.x + 8, y, a.w - 16, 34, 10);
-    ctx.fill();
-    ctx.lineWidth = 2;
-    ctx.strokeStyle = busy ? INK : 'rgba(255,246,230,0.25)';
-    ctx.stroke();
+    sprite(ctx, `armSlot:${busy}`, a.x + 6, y - 2, a.w - 12, 38, (g) => {
+      if (busy) {
+        const skin = g.createLinearGradient(0, 2, 0, 36);
+        skin.addColorStop(0, '#ffd0c4');
+        skin.addColorStop(1, '#ff9a88');
+        g.fillStyle = skin;
+      } else g.fillStyle = 'rgba(255,246,230,0.1)';
+      roundRect(g, 2, 2, a.w - 16, 34, 10);
+      g.fill();
+      g.lineWidth = 2;
+      g.strokeStyle = busy ? INK : 'rgba(255,246,230,0.25)';
+      g.stroke();
+    });
     label(ctx, String(i + 1), a.x + 18, y + 22, 12, busy ? INK : 'rgba(255,246,230,0.5)', 'center', 900);
     if (arm.state === 'hold' && arm.item) {
       drawIngredient(ctx, arm.item.ing, a.x + 46, y + 18, 26, arm.item.prep, t);
       if (arm.item.quality === 'perfect') star(ctx, a.x + 78, y + 17, 8, PALETTE.gold, INK, 1.5);
-      else label(ctx, HELD_TAGS[arm.item.prep ?? 'none'], a.x + 78, y + 22, 11, INK, 'center', 900);
+      else label(ctx, HELD_TAGS[arm.item.prep ?? 'none'], a.x + 78, y + 22, 12, INK, 'center', 900);
     } else if (arm.state === 'chop') {
       label(ctx, 'chopping', a.x + 58, y + 22, 12, INK, 'center', 900);
     } else if (arm.state === 'stir') {
@@ -484,16 +565,18 @@ export function drawArmSlots(ctx, state, t) {
 /** The plate checklist: which parts are on the Clam Plate and what is left. */
 export function drawChecklist(ctx, state) {
   const c = LAYOUT.checklist;
-  const paper = ctx.createLinearGradient(0, c.y, 0, c.y + c.h);
-  paper.addColorStop(0, '#fffaf0');
-  paper.addColorStop(1, '#f1e2c6');
-  panel(ctx, c.x, c.y, c.w, c.h, { fill: paper, stroke: INK, r: 14, line: 3 });
-  const grain = paperPattern(ctx);
-  if (grain) {
-    ctx.fillStyle = grain;
-    roundRect(ctx, c.x, c.y, c.w, c.h, 14);
-    ctx.fill();
-  }
+  sprite(ctx, 'checklist', c.x - 2, c.y - 2, c.w + 7, c.h + 9, (g) => {
+    const paper = g.createLinearGradient(0, 2, 0, 2 + c.h);
+    paper.addColorStop(0, '#fffaf0');
+    paper.addColorStop(1, '#f1e2c6');
+    panel(g, 2, 2, c.w, c.h, { fill: paper, stroke: INK, r: 14, line: 3 });
+    const grain = paperPattern(g);
+    if (grain) {
+      g.fillStyle = grain;
+      roundRect(g, 2, 2, c.w, c.h, 14);
+      g.fill();
+    }
+  });
   const plate = state.plate;
   if (!plate.recipeId) {
     text(ctx, 'CLAM PLATE IS EMPTY', c.x + 14, c.y + 28, { size: 15, color: PALETTE.ink, outline: null });
@@ -574,12 +657,14 @@ export function drawTideGauge(ctx, state, t) {
 /** The key hint card in the corner. */
 export function drawKeyHints(ctx) {
   const k = LAYOUT.keys;
-  panel(ctx, k.x, k.y, k.w, k.h, { fill: '#1f3a3f', stroke: INK, r: 12, line: 3 });
-  const rows = [['1-0', 'grab'], ['QWER', 'stations'], ['Space', 'plate'], ['S', 'serve'], ['I', 'ink burst'], ['Bksp', 'bin'], ['P H M', 'pause help mute']];
-  rows.forEach(([key, what], i) => {
-    const y = k.y + 15 + i * 17.5;
-    keycap(ctx, key, k.x + 10, y, { size: 11, align: 'left' });
-    label(ctx, what, k.x + 66, y + 4, 12, PALETTE.pearl, 'left', 700);
+  sprite(ctx, 'keyHints', k.x - 2, k.y - 2, k.w + 7, k.h + 9, (g) => {
+    panel(g, 2, 2, k.w, k.h, { fill: '#1f3a3f', stroke: INK, r: 12, line: 3 });
+    const rows = [['1-0', 'grab'], ['QWER', 'stations'], ['Space', 'plate'], ['S', 'serve'], ['I', 'ink burst'], ['Bksp', 'bin'], ['P H M', 'pause help mute']];
+    rows.forEach(([key, what], i) => {
+      const y = 16 + i * 17.9;
+      keycap(g, key, 11, y, { size: 12, align: 'left' });
+      label(g, what, 68, y + 4.5, 12, PALETTE.pearl, 'left', 700);
+    });
   });
 }
 
@@ -613,23 +698,68 @@ export function drawBanners(ctx, state, t) {
     ctx.globalAlpha = 1;
     shown = true;
   }
-  if (state.coach?.text) drawCoach(ctx, state.coach, t, shown);
+  drawCoach(ctx, state, t, shown);
 }
 
-/** Where the coach's bubble may sit on the wall, in order of preference: clear of the tickets and the clock. */
-const COACH_SPOTS = [{ x: 124, y: 160 }, { x: 716, y: 196 }, { x: 124, y: 284 }, { x: 716, y: 284 }];
+/**
+ * The coach bubble's two homes on the wall beside Octavia, clear of the porthole, tickets,
+ * clock, stations, Clam Plate and Current Window: left of her for targets on the left, else right.
+ */
+const COACH_HOMES = [{ x: 290, y: 158 }, { x: 726, y: 158 }];
+
+/** The bubble as drawn: eased position, fade, the hint it shows and the last frame time. */
+const coachView = { x: 0, y: 0, alpha: 0, coach: null, t: 0 };
+
+/** Splits `str` into lines no wider than maxWidth in the current font. */
+function wrap(ctx, str, maxWidth) {
+  const lines = [];
+  let line = '';
+  for (const word of str.split(' ')) {
+    const next = line ? `${line} ${word}` : word;
+    if (line && ctx.measureText(next).width > maxWidth) {
+      lines.push(line);
+      line = word;
+    } else line = next;
+  }
+  if (line) lines.push(line);
+  return lines;
+}
 
 /**
  * The night-one coach: a speech bubble from a tiny Octavia with the step's text, the key to
- * press and step dots. It takes the first wall spot away from its target (below any banner),
- * and a bouncing arrow points at the target.
+ * press and step dots, plus a bouncing arrow at the target. The bubble glides between its two
+ * homes and fades out while a banner is up, so it never jumps.
  */
-function drawCoach(ctx, coach, t, low) {
-  const w = 360;
-  const h = 108;
+function drawCoach(ctx, state, t, banner) {
+  const v = coachView;
+  const dt = Math.max(0, Math.min(0.1, t - v.t));
+  v.t = t;
+  const live = state.coach?.text ? state.coach : null;
+  const target = (live ?? v.coach)?.target ?? null;
+  const home = COACH_HOMES[target && target.x > 700 ? 1 : 0];
+  if (live && !v.coach) Object.assign(v, home);
+  if (live) v.coach = live;
+  const ease = (rate) => (dt > 0 ? Math.min(1, dt * rate) : 1);
+  v.alpha += ((live && !banner ? 1 : 0) - v.alpha) * ease(7);
+  v.x += (home.x - v.x) * ease(6);
+  v.y += (home.y - v.y) * ease(6);
+  if (v.alpha < 0.02) {
+    if (!live) v.coach = null;
+    return;
+  }
+  ctx.globalAlpha = v.alpha;
+  paintCoach(ctx, v.coach, v.x, v.y, t);
+  ctx.globalAlpha = 1;
+}
+
+/** The coach bubble at (x, y) for `coach`, with its arrow. */
+function paintCoach(ctx, coach, x, y, t) {
+  const w = 262;
+  const tx = x + 80;
+  font(ctx, 15, 800);
+  const lines = wrap(ctx, coach.text, w - 94);
+  const h = Math.max(106, 70 + lines.length * 18);
   const target = coach.target ?? null;
-  const near = (s) => target && Math.abs(target.x - (s.x + w / 2)) < w / 2 + 60 && Math.abs(target.y - (s.y + h / 2)) < h / 2 + 60;
-  const { x, y } = COACH_SPOTS.find((s) => !near(s) && !(low && s.y < 276)) ?? COACH_SPOTS[2];
   const right = x > 640;
   if (target) drawCoachArrow(ctx, target, { x: x + w / 2, y: y + h / 2 }, t);
   const paper = ctx.createLinearGradient(0, y, 0, y + h);
@@ -659,39 +789,34 @@ function drawCoach(ctx, coach, t, low) {
   ctx.lineWidth = 2;
   roundRect(ctx, x + 5, y + 5, w - 10, h - 10, 14);
   ctx.stroke();
-  const mx = x + 48;
-  const my = y + h / 2;
-  const sea = ctx.createRadialGradient(mx, my - 10, 4, mx, my, 38);
+  const mx = x + 40;
+  const my = y + 48;
+  const sea = ctx.createRadialGradient(mx, my - 8, 4, mx, my, 32);
   sea.addColorStop(0, '#5fd0dc');
   sea.addColorStop(1, '#1b6f86');
-  blob(ctx, mx, my, 36, sea, null);
+  blob(ctx, mx, my, 30, sea, null);
   ctx.save();
   ctx.beginPath();
-  ctx.arc(mx, my, 36, 0, TAU);
+  ctx.arc(mx, my, 30, 0, TAU);
   ctx.clip();
-  drawOctaviaPortrait(ctx, mx, my + 13, 0.3, t, 'wave');
+  drawOctaviaPortrait(ctx, mx, my + 11, 0.25, t, 'wave');
   ctx.restore();
   ctx.lineWidth = 3;
   ctx.strokeStyle = INK;
   ctx.beginPath();
-  ctx.arc(mx, my, 36, 0, TAU);
+  ctx.arc(mx, my, 30, 0, TAU);
   ctx.stroke();
-  const tx = x + 96;
-  let kx = tx;
   if (coach.key) {
     label(ctx, 'PRESS', tx, y + 30, 12, PALETTE.coralDark, 'left', 900);
-    const kw = keycap(ctx, coach.key, tx + 48, y + 25, { size: 14, fill: PALETTE.gold, align: 'left' });
-    kx = tx + 56 + kw;
+    keycap(ctx, coach.key, tx + 48, y + 25, { size: 14, fill: PALETTE.gold, align: 'left' });
   } else label(ctx, "OCTAVIA'S TIP", tx, y + 30, 12, PALETTE.coralDark, 'left', 900);
   const total = coach.total ?? 0;
   const step = Math.min(total, Math.max(1, coach.step ?? 1));
   if (total > 0) label(ctx, `${step}/${total}`, x + w - 16, y + 30, 12, '#5a4470', 'right', 900);
   for (let k = 0; k < total; k++) {
-    const dx = x + w - 46 - (total - 1 - k) * 12;
-    if (dx < kx + 6) continue;
-    blob(ctx, dx, y + 26, k === step - 1 ? 5 : 3.6, k < step ? PALETTE.gold : 'rgba(59,42,77,0.18)', INK, 1.5);
+    blob(ctx, mx + (k - (total - 1) / 2) * 10, y + 92, k === step - 1 ? 4.6 : 3.4, k < step ? PALETTE.gold : 'rgba(59,42,77,0.18)', INK, 1.5);
   }
-  paragraph(ctx, coach.text, tx, y + 54, w - 112, 18, 15, INK, 800);
+  lines.forEach((line, i) => label(ctx, line, tx, y + 54 + i * 18, 15, INK, 'left', 800));
 }
 
 /** A dashed ring round the coach's target and a gold arrow bouncing toward it from the bubble side. */
