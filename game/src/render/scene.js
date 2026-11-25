@@ -602,10 +602,11 @@ function drawCharred(ctx, ing, prep, x, y, s) {
   });
 }
 
-/** Food in a station slot: a gold aura when perfect, an amber warning when overdone or due a flip, charred and smoking when burnt. */
-function slotFood(ctx, item, x, y, s, t) {
+/** Food in a station slot: a gold aura when perfect, an amber warning when overdone or due a flip, charred and smoking when burnt; `marked` shows sear marks early. */
+function slotFood(ctx, item, x, y, s, t, marked = false) {
   if (!item) return;
-  const raw = (item.phase === 'cook' && (item.prep !== 'sear' || !item.flipped)) || (item.phase === 'chop' && cookProgress(item) < 0.45);
+  const early = marked && cookProgress(item) > 0.3;
+  const raw = (item.phase === 'cook' && !early && (item.prep !== 'sear' || !item.flipped)) || (item.phase === 'chop' && cookProgress(item) < 0.45);
   const prep = raw ? null : item.prep;
   const pulse = frame.calm ? 0.5 : 0.5 + 0.5 * Math.sin(t * 7);
   if (item.phase === 'perfect') glow(ctx, x, y, s * 1.7, '255,209,102', 0.65 + pulse * 0.35);
@@ -775,13 +776,13 @@ function drawBoard(ctx, state, t) {
   }
 }
 
-/** The colour of a pot's contents as it cooks; an empty pot holds clear water. */
+/** The colour of a pot's broth as its food cooks, darker than the food floating in it; an empty pot holds clear water. */
 function brothColor(item) {
   if (!item) return '#5fb7c0';
   if (item.phase === 'burnt') return '#3b2a22';
-  if (item.phase === 'over') return '#efb46a';
-  if (item.phase === 'perfect') return '#fff0c4';
-  return INGREDIENT[item.ing].color;
+  if (item.phase === 'over') return '#d98a4a';
+  if (item.phase === 'perfect') return '#f2c15e';
+  return '#4fae9f';
 }
 
 /** The liquid in a pot: its colour, a soft sheen and bubbles rolling to the surface (lazily when empty). */
@@ -845,6 +846,68 @@ function drawStove(ctx, st, heat) {
   ctx.fill();
 }
 
+/** The pot's food bobbing half-submerged in its broth, clipped to the pot mouth so it never pokes through the front. */
+function floatingFood(ctx, item, st, cx, t) {
+  const y = st.y + 42 + (frame.calm ? 0 : Math.sin(t * 2.2 + st.x) * 2);
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(st.x, st.y - 40, st.w, 86);
+  ctx.moveTo(cx + st.w / 2 - 12, st.y + 46);
+  ctx.ellipse(cx, st.y + 46, st.w / 2 - 12, 12, 0, 0, TAU);
+  ctx.clip();
+  contactShadow(ctx, cx + 6, st.y + 49, 34, 7, 0.55);
+  drawIngredient(ctx, item.ing, cx + 4, y, 50, item.phase === 'cook' ? null : item.prep, t);
+  ctx.globalAlpha = 0.7;
+  ctx.beginPath();
+  ctx.ellipse(cx, st.y + 49, st.w / 2 - 18, 7, 0, 0, Math.PI);
+  ctx.fillStyle = brothColor(item);
+  ctx.fill();
+  ctx.restore();
+}
+
+/** The second pot before it is bought: cold and covered on its unlit stove, with a dim Tide Shop tag. */
+function drawLockedPot(ctx, st, cx) {
+  const base = st.y + st.h;
+  drawStove(ctx, st, 0);
+  ctx.save();
+  ctx.globalAlpha = 0.8;
+  ctx.beginPath();
+  ctx.moveTo(st.x + 14, st.y + 50);
+  ctx.lineTo(st.x + 20, base - 22);
+  ctx.quadraticCurveTo(cx, base - 8, st.x + st.w - 20, base - 22);
+  ctx.lineTo(st.x + st.w - 14, st.y + 50);
+  ctx.closePath();
+  const body = ctx.createLinearGradient(st.x + 14, 0, st.x + st.w - 14, 0);
+  body.addColorStop(0, '#103234');
+  body.addColorStop(0.25, '#3f7b78');
+  body.addColorStop(0.7, '#1f4f4f');
+  body.addColorStop(1, '#0a2424');
+  ctx.fillStyle = body;
+  ctx.fill();
+  outline(ctx, 3);
+  ctx.beginPath();
+  ctx.moveTo(st.x + 8, st.y + 54);
+  ctx.quadraticCurveTo(cx, st.y + 2, st.x + st.w - 8, st.y + 54);
+  ctx.closePath();
+  ctx.fillStyle = verticalGradient(ctx, st.y + 20, st.y + 54, ['#5f9690', '#2a5a58', '#163a3a']);
+  ctx.fill();
+  outline(ctx, 3);
+  ctx.lineWidth = 3;
+  ctx.lineCap = 'round';
+  ctx.strokeStyle = 'rgba(220,255,250,0.35)';
+  ctx.beginPath();
+  ctx.moveTo(st.x + 24, st.y + 46);
+  ctx.quadraticCurveTo(st.x + 34, st.y + 32, cx - 10, st.y + 27);
+  ctx.stroke();
+  ctx.lineCap = 'butt';
+  blob(ctx, cx, st.y + 24, 7, '#8a6a3a', INK, 2.5);
+  ctx.restore();
+  font(ctx, 12);
+  const w = ctx.measureText('Tide Shop').width + 20;
+  panel(ctx, cx - w / 2, st.y + 82, w, 20, { fill: 'rgba(10,30,36,0.85)', stroke: 'rgba(255,209,102,0.5)', r: 7, line: 1.5, shadow: false });
+  label(ctx, 'Tide Shop', cx, st.y + 96, 12, 'rgba(255,209,102,0.7)', 'center', 800);
+}
+
 /** A Bubble Pot on its vent stove; it burns twice as fast with no arm stirring. */
 function drawPot(ctx, state, id, t) {
   const st = LAYOUT.stations[id];
@@ -853,15 +916,7 @@ function drawPot(ctx, state, id, t) {
   const station = state.stations[id];
   contactShadow(ctx, cx + 6, base, 74, 13, 0.65);
   if (station.locked) {
-    drawStove(ctx, st, 0);
-    ctx.setLineDash([8, 6]);
-    ctx.lineWidth = 3;
-    ctx.strokeStyle = 'rgba(255,246,230,0.45)';
-    roundRect(ctx, st.x + 10, st.y + 30, st.w - 20, st.h - 56, 18);
-    ctx.stroke();
-    ctx.setLineDash([]);
-    text(ctx, 'SECOND POT', cx, st.y + 70, { size: 13, color: 'rgba(255,246,230,0.8)', align: 'center', line: 3 });
-    text(ctx, 'upgrade', cx, st.y + 88, { size: 13, color: 'rgba(255,209,102,0.9)', align: 'center', line: 3 });
+    drawLockedPot(ctx, st, cx);
     return;
   }
   const item = station.slots[0];
@@ -911,6 +966,7 @@ function drawPot(ctx, state, id, t) {
   }
   oval(ctx, cx, st.y + 46, st.w / 2 - 10, 14, '#0e3a39', INK, 3);
   drawBroth(ctx, item, cx, st.y + 48, t);
+  if (item && item.phase !== 'burnt') floatingFood(ctx, item, st, cx, t);
   if (item) {
     if (item.phase === 'perfect') glow(ctx, cx, st.y + 44, 76, '255,209,102', 0.35 + pulse * 0.35, 30);
     else if (item.phase === 'over') glow(ctx, cx, st.y + 44, 72, '255,110,40', 0.25 + pulse * 0.3, 28);
@@ -1008,9 +1064,24 @@ function drawGrill(ctx, state, t) {
   }
   slots.forEach((item, i) => {
     const at = SLOT_TARGETS.grill[i];
-    slotFood(ctx, item, at.x, at.y - 15, 50, t);
-    if (item && item.phase !== 'burnt' && !frame.calm) sizzle(ctx, at.x, at.y - 18, t + i * 0.4);
+    if (!item) return;
+    contactShadow(ctx, at.x + 3, at.y - 2, 32, 7, 0.6);
+    slotFood(ctx, item, at.x, at.y - 18, 68, t, true);
+    if (item.phase === 'burnt') return;
+    juices(ctx, at.x, at.y - 2, t + i * 0.9);
+    if (!frame.calm) sizzle(ctx, at.x, at.y - 22, t + i * 0.4);
   });
+}
+
+/** Glossy juices bubbling out around grilled food. */
+function juices(ctx, x, y, t) {
+  for (let k = 0; k < 4; k++) {
+    const p = frame.calm ? 0.5 : (t * 0.9 + k * 0.27) % 1;
+    const jx = x + (k - 1.5) * 15;
+    const r = 2.5 + Math.sin(p * Math.PI) * 2.5;
+    blob(ctx, jx, y + (k % 2) * 3, r, 'rgba(255,196,110,0.9)', 'rgba(90,40,10,0.6)', 1);
+    blob(ctx, jx - r * 0.35, y + (k % 2) * 3 - r * 0.35, r * 0.35, 'rgba(255,255,240,0.95)', null);
+  }
 }
 
 /** One woven steamer basket with a window onto its food. */
@@ -1041,8 +1112,8 @@ function drawBasket(ctx, st, y, item, at, t) {
   ctx.lineWidth = 2;
   ctx.strokeStyle = 'rgba(59,42,77,0.8)';
   ctx.stroke();
-  slotFood(ctx, item, at.x - 14, at.y - 3, 42, t);
-  if (item && item.phase !== 'burnt') puff(ctx, at.x - 14 + Math.sin(t * 0.8) * 10, at.y - 12, 40, '255,255,255', 0.2, 22);
+  slotFood(ctx, item, at.x - 16, at.y - 4, 54, t);
+  if (item && item.phase !== 'burnt') puff(ctx, at.x - 16 + Math.sin(t * 0.8) * 10, at.y - 14, 40, '255,255,255', 0.18, 22);
 }
 
 /** The Kelp Steamer: two woven baskets stacked under a lid that rattles and puffs steam. */
@@ -1108,7 +1179,7 @@ export function drawStations(ctx, state, t) {
   drawSteamer(ctx, state, t);
 }
 
-/** Paints the Clam Plate's open upper shell: pearly, ribbed and rimmed. */
+/** Paints the Clam Plate's open upper shell: deep teal nacre inside, ribbed and rimmed, so pale dishes stand out. */
 function paintClamLid(c, x, y, w) {
   const lid = () => {
     c.beginPath();
@@ -1117,10 +1188,11 @@ function paintClamLid(c, x, y, w) {
     c.closePath();
   };
   lid();
-  const inner = c.createRadialGradient(x - 30, y - 52, 8, x, y - 20, w / 2 + 10);
-  inner.addColorStop(0, '#fffaf2');
-  inner.addColorStop(0.55, '#ecdcff');
-  inner.addColorStop(1, '#a993ea');
+  const inner = c.createRadialGradient(x - 30, y - 60, 6, x, y - 20, w / 2 + 10);
+  inner.addColorStop(0, '#e6d6ff');
+  inner.addColorStop(0.3, '#8f74cf');
+  inner.addColorStop(0.7, '#3f2f7a');
+  inner.addColorStop(1, '#251a4e');
   c.fillStyle = inner;
   c.fill();
   c.save();
@@ -1132,7 +1204,7 @@ function paintClamLid(c, x, y, w) {
     c.lineTo(x + i * 26 - 8, y - 80 + Math.abs(i) * 6);
     c.lineTo(x + i * 26 + 8, y - 80 + Math.abs(i) * 6);
     c.closePath();
-    c.fillStyle = i % 2 ? 'rgba(110,80,180,0.12)' : 'rgba(255,255,255,0.28)';
+    c.fillStyle = i % 2 ? 'rgba(4,24,40,0.22)' : 'rgba(200,255,246,0.14)';
     c.fill();
   }
   const sheen = c.createLinearGradient(x - w / 2, y - 80, x + w / 2, y);
@@ -1159,6 +1231,9 @@ function paintClamLid(c, x, y, w) {
   c.lineCap = 'butt';
 }
 
+/** Dish sizes on the Clam Plate for the wide vessels, so the dark bed still frames them; bowls and cups use 278. */
+const PLATE_SIZE = { kelpRoll: 260, toast: 260, skewer: 260, platter: 222 };
+
 /** The Clam Plate: an open giant clam holding the dish being assembled. */
 export function drawClamPlate(ctx, state, t) {
   const { x, y, w } = LAYOUT.plate;
@@ -1166,23 +1241,33 @@ export function drawClamPlate(ctx, state, t) {
   const pulse = frame.calm ? 0.5 : 0.5 + 0.5 * Math.sin(t * 4);
   contactShadow(ctx, x + 10, y + 18, w / 2 + 28, 26, 0.65);
   drawCached(ctx, 'clamLid', x - w / 2 - 4, y - 96, w + 8, 96, (c) => paintClamLid(c, w / 2 + 4, 96, w));
-  if (plate.recipeId) glow(ctx, x, y - 14, w * 0.62, '255,214,120', 0.3 + pulse * 0.2, 54);
-  const base = ctx.createLinearGradient(0, y - 24, 0, y + 36);
-  base.addColorStop(0, '#f8f0ff');
-  base.addColorStop(0.5, '#c4b0f0');
-  base.addColorStop(1, '#6f58b8');
-  oval(ctx, x, y + 6, w / 2 + 6, 30, base, INK, 3);
+  if (plate.recipeId) glow(ctx, x, y - 26, w * 0.42, '255,214,120', 0.1 + pulse * 0.08, 40);
+  const lip = ctx.createLinearGradient(0, y - 24, 0, y + 36);
+  lip.addColorStop(0, '#f8f0ff');
+  lip.addColorStop(0.5, '#b9a6ea');
+  lip.addColorStop(1, '#5d47a4');
+  oval(ctx, x, y + 6, w / 2 + 6, 30, lip, INK, 3);
+  const bed = ctx.createRadialGradient(x - 20, y - 2, 6, x, y + 6, w / 2);
+  bed.addColorStop(0, '#5a4a9e');
+  bed.addColorStop(0.6, '#2b2160');
+  bed.addColorStop(1, '#160f36');
+  oval(ctx, x, y + 4, w / 2 - 8, 22, bed, 'rgba(10,6,30,0.8)', 2);
   ctx.lineWidth = 2;
-  ctx.strokeStyle = 'rgba(255,255,255,0.65)';
+  ctx.strokeStyle = 'rgba(200,255,246,0.45)';
   ctx.beginPath();
-  ctx.ellipse(x, y + 4, w / 2 - 4, 24, 0, Math.PI * 1.1, Math.PI * 1.9);
+  ctx.ellipse(x, y + 4, w / 2 - 14, 17, 0, Math.PI * 0.15, Math.PI * 0.85);
   ctx.stroke();
   if (plate.recipeId) {
-    drawDish(ctx, plate.recipeId, x, y - 4, 214, plate.parts, false);
-    if (plate.parts.some((part) => part.prep !== 'raw' && part.prep !== 'chop')) wisps(ctx, x - 8, y - 36, t, 3, 46);
-    glint(ctx, x - 44, y - 22, t);
+    oval(ctx, x + 4, y + 14, 104, 15, 'rgba(0,10,18,0.5)', null);
+    drawDish(ctx, plate.recipeId, x, y - 12, PLATE_SIZE[plate.recipeId] ?? 278, plate.parts, false);
+    if (plate.parts.some((part) => part.prep !== 'raw' && part.prep !== 'chop')) {
+      steam(ctx, x - 20, y - 52, t, 3, 10, 54, 0.3);
+      wisps(ctx, x - 8, y - 56, t, 3, 54);
+    }
+    glint(ctx, x - 58, y - 30, t);
+    glint(ctx, x + 50, y - 44, t + 1.7);
   } else {
-    label(ctx, 'Hold food, then press Space', x, y + 10, 13, 'rgba(59,42,77,0.75)', 'center', 800);
+    label(ctx, 'Hold food, then press Space', x, y + 10, 13, 'rgba(220,250,245,0.85)', 'center', 800);
   }
   const lw = 196;
   panel(ctx, x - lw / 2, y + 26, lw, 26, { fill: PALETTE.deep, stroke: INK, r: 9, line: 2.5, shadow: false });
@@ -1557,6 +1642,13 @@ function drawMoonbeam(ctx, t) {
 
 /** King Tide's two golden spotlights sweeping in from the top corners, crossing over Octavia and pooling on the counter. */
 function drawSpotlights(ctx, t) {
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(120, LAYOUT.board.y + LAYOUT.board.h + 4, LAYOUT.pass.x - 126, LAYOUT.counterBottom - LAYOUT.board.h - 14);
+  ctx.rect(SLATE.x - 14, SLATE.y - 12, SLATE.w + 32, 262);
+  ctx.moveTo(LAYOUT.plate.x + LAYOUT.plate.w / 2 + 14, LAYOUT.plate.y - 30);
+  ctx.ellipse(LAYOUT.plate.x, LAYOUT.plate.y - 30, LAYOUT.plate.w / 2 + 14, 86, 0, 0, TAU);
+  ctx.clip('evenodd');
   ctx.fillStyle = cachedGradient(ctx, 'spot', () => {
     const g = ctx.createLinearGradient(0, 0, 0, 640);
     g.addColorStop(0, 'rgba(255,220,130,0.36)');
@@ -1574,6 +1666,7 @@ function drawSpotlights(ctx, t) {
     ctx.fill();
     glow(ctx, bx, 612, 160, '255,214,120', 0.22, 38);
   }
+  ctx.restore();
 }
 
 /** Light and mood over the kitchen, drawn after the counter and stations and before the HUD. */
@@ -1614,7 +1707,7 @@ const PLATES = {
   pot0: { name: 'BUBBLE POT', key: 'W', drop: 10, dial: [-60, -24, 17] },
   pot1: { name: 'POT 2', key: 'W', drop: 10, dial: [-60, -24, 17] },
   grill: { name: 'VENT GRILL', key: 'E', drop: 2, dial: [0, -54, 15] },
-  steamer: { name: 'KELP STEAMER', key: 'R', drop: 12, dial: [44, -22, 15] },
+  steamer: { name: 'KELP STEAMER', key: 'R', drop: 12, dial: [30, -22, 15] },
 };
 
 /** Timing dials with their PERFECT, FLIP! and STIR ME! tags, and the station name plates, drawn above Octavia so her arms never hide them. */

@@ -4,9 +4,9 @@
  * Puffy inflates as her patience runs out, so the portrait itself is her patience meter.
  */
 
-import { PALETTE } from '../config.js';
+import { PALETTE, TUNING } from '../config.js';
 import { patienceShare, slotPoint, ticketForPlate } from '../orders.js';
-import { blob, font, roundRect, starRow, TAU } from './draw.js';
+import { blob, font, ring, roundRect, starRow, TAU, text } from './draw.js';
 
 const INK = PALETTE.ink;
 
@@ -470,7 +470,8 @@ function diner(ctx, ticket, x, y, r, mood, t) {
 /**
  * The diners at the Current Window, drawn inside `rect` ({x, y, w, h}) before its shelves and
  * plates: each plate's customer looks over it, mouth just above the rim, the front one larger
- * and beaming. With the window empty, the longest-waiting customer peeks in from the top.
+ * and beaming. With the window empty, the longest-waiting customer peeks in from the top;
+ * under two plates, the next customer in line waits at a reef table.
  */
 export function drawWindowDiners(ctx, state, t, rect) {
   const waiting = state.tickets[0];
@@ -493,6 +494,38 @@ export function drawWindowDiners(ctx, state, t, rect) {
     }
     if (ticket.critic) scorecard(ctx, rect.x + 30, at.y - 40, state.critic?.live ?? 0);
   });
+  const slots = state.upgrades?.biggerPlate ? TUNING.biggerPassSlots : TUNING.passSlots;
+  if (state.pass.length && slots < 3) nextInLine(ctx, state, t, rect);
+}
+
+/** The next customer in line (oldest ticket without a plate at the window) waiting small at a reef table below the shelves, with their patience ring. */
+function nextInLine(ctx, state, t, rect) {
+  const plated = new Set(state.pass.map((plate) => ticketForPlate(state, plate)));
+  const ticket = state.tickets.find((tk) => !plated.has(tk));
+  if (!ticket) return;
+  const x = rect.x + rect.w * 0.42;
+  const top = rect.y + rect.h - 46;
+  const share = patienceShare(ticket);
+  diner(ctx, ticket, x, top - 24 + Math.sin(t * 1.4) * 2, 28, share, t);
+  roundRect(ctx, x - 7, top, 14, 34, 5);
+  ctx.fillStyle = '#8a4f6e';
+  ctx.fill();
+  ctx.lineWidth = 2.5;
+  ctx.strokeStyle = INK;
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.ellipse(x, top, 46, 9, 0, 0, TAU);
+  const coral = ctx.createLinearGradient(0, top - 9, 0, top + 9);
+  coral.addColorStop(0, '#ffb3a0');
+  coral.addColorStop(1, '#c4566a');
+  ctx.fillStyle = coral;
+  ctx.fill();
+  ctx.stroke();
+  blob(ctx, x + 22, top - 6, 6, '#7fe0ff', INK, 2);
+  const rx = rect.x + rect.w - 22;
+  blob(ctx, rx, top - 34, 12, 'rgba(5,25,29,0.85)', null);
+  ring(ctx, rx, top - 34, 8.5, share, share > 0.5 ? PALETTE.green : share > 0.25 ? PALETTE.gold : PALETTE.red, 3.5);
+  text(ctx, 'next in line', x + 8, top + 30, { size: 12, color: PALETTE.pearl, align: 'center', line: 3 });
 }
 
 /**
