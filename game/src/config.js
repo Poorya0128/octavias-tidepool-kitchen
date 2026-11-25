@@ -97,6 +97,7 @@ export const LAYOUT = {
   status: { x: 1030, y: 154, w: 238, h: 34 },
   bins: { x: 12, y: 658, w: 102, h: 134, gap: 6 },
   keys: { x: 1094, y: 658, w: 174, h: 134 },
+  ink: { x: 12, y: 538, w: 104, h: 110 },
 };
 
 /** Where Octavia's arm tip goes for each station slot (grill and steamer have two slots). */

@@ -572,3 +572,8 @@ export function drawTrash(ctx) {
   label(ctx, 'BIN', cx, tr.y + 50, 14, PALETTE.pearl, 'center', 900);
   keycap(ctx, 'Bksp', cx, tr.y + 78, { size: 11 });
 }
+
+/** Light and mood over the kitchen, drawn after the counter and stations and before the HUD. */
+export function drawAtmosphere(ctx, state, t, calm) {
+  // Filled in by the v2 lighting pass.
+}

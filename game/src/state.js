@@ -33,6 +33,8 @@ export function createNight({ nightIndex, upgrades = {}, seed = 1 }) {
     arms: createArms(), stations: createStations(upgrades),
     plate: { recipeId: null, parts: [] }, pass: [], twinsServed: {},
     events: [], toasts: [],
+    ink: { meter: 0, active: false, endsAt: 0, uses: 0 },
+    moments: {}, speech: [],
   };
   state.toast = (text, color = '#fff6e6') => {
     state.toasts.push({ text, color, at: state.time });

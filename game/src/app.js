@@ -10,7 +10,7 @@ import { buyUpgrade, recordNight, saveCampaign } from './campaign.js';
 import { playEvent, setMuted, unlockAudio, updateMusic } from './audio.js';
 import { actionForArea, actionForKey, hitTest, nightHitAreas } from './input.js';
 import { createArmView, drawOctavia, updateArmView } from './render/octopus.js';
-import { drawBins, drawClamPlate, drawCounter, drawPass, drawStations, drawTrash, drawWall } from './render/scene.js';
+import { drawAtmosphere, drawBins, drawClamPlate, drawCounter, drawPass, drawStations, drawTrash, drawWall } from './render/scene.js';
 import { drawArmSlots, drawBanners, drawChecklist, drawHud, drawKeyHints, drawOrderBoard, drawTideGauge, drawToasts } from './render/ui.js';
 import { ambient, createEffects, drawEffects, spawnFromEvents, updateEffects } from './render/effects.js';
 import { drawHelp, drawMap, drawPause, drawResults, drawSettings, drawShop, drawTitle } from './render/screens.js';
@@ -96,6 +96,7 @@ function drawNight(ctx, app) {
   drawPass(ctx, night, t);
   drawTrash(ctx);
   drawBins(ctx, t, app.hoverBin);
+  drawAtmosphere(ctx, night, t, calm);
   drawOrderBoard(ctx, night, t);
   drawHud(ctx, night, t);
   drawArmSlots(ctx, night, t);

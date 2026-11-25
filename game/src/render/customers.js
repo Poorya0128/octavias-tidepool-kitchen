@@ -212,3 +212,11 @@ export function drawCustomer(ctx, customerId, x, y, r, mood = 1, t = 0, changed 
   PORTRAITS[customerId](ctx, x, y, r, mood, t, changed);
   ctx.restore();
 }
+
+/**
+ * The diners at the Current Window, drawn inside `rect` ({x, y, w, h}) behind the plates:
+ * the customer the front plate is for, large, and the next one peeking in.
+ */
+export function drawWindowDiners(ctx, state, t, rect) {
+  // Filled in by the v2 character pass.
+}
