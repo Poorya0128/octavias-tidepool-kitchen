@@ -6,31 +6,44 @@
 
 import { createNight, dispatch, inRush, nightSummary, stepNight } from './state.js';
 import { NIGHTS } from './data/nights.js';
-import { buyUpgrade, recordNight, saveCampaign } from './campaign.js';
+import { buyUpgrade, recordNight, saveCampaign, UPGRADES } from './campaign.js';
 import { playEvent, setMuted, unlockAudio, updateMusic } from './audio.js';
 import { actionForArea, actionForKey, hitTest, nightHitAreas } from './input.js';
-import { createArmView, drawOctavia, updateArmView } from './render/octopus.js';
-import { drawBins, drawClamPlate, drawCounter, drawPass, drawStations, drawTrash, drawWall } from './render/scene.js';
+import { chefThink } from './autochef.js';
+import { streakMultiplier } from './scoring.js';
 import { drawArmSlots, drawBanners, drawChecklist, drawHud, drawKeyHints, drawOrderBoard, drawTideGauge, drawToasts } from './render/ui.js';
+import { createArmView, drawOctavia, updateArmView } from './render/octopus.js';
+import { drawAtmosphere, drawBins, drawStationOverlays, drawClamPlate, drawCounter, drawPass, drawStations, drawTrash, drawWall } from './render/scene.js';
 import { ambient, createEffects, drawEffects, spawnFromEvents, updateEffects } from './render/effects.js';
 import { drawHelp, drawMap, drawPause, drawResults, drawSettings, drawShop, drawTitle } from './render/screens.js';
 import { panel, text } from './render/draw.js';
-import { chefThink } from './autochef.js';
 
 /** A new app on the title screen. */
 export function createApp({ campaign, audio }) {
   const app = {
     screen: 'title', overlay: null, campaign, audio, night: null, summary: null,
     mapSel: Math.min(campaign.unlocked, NIGHTS.length) - 1, fx: createEffects(), armView: null,
-    buttons: [], t: 0, hoverBin: null, drag: null, frozen: false, seed: 1, returnTo: null,
+    buttons: [], t: 0, hoverBin: null, drag: null, frozen: false, seed: 1, returnTo: null, resultsAt: -Infinity,
   };
   setMuted(audio, !campaign.settings.sound);
   return app;
 }
 
-/** Opens a night of service. */
+/** Milliseconds of real time the results screen ignores input, so a key or click still held at 0:00 cannot skip it. */
+const RESULTS_GRACE_MS = 800;
+
+/** Keys of the overlay cards (M mutes everywhere; 1-5 buy in the shop). */
+const OVERLAY_KEYS = {
+  help: { h: 'closeHelp', Escape: 'closeHelp', Enter: 'closeHelp', ' ': 'closeHelp' },
+  pause: { p: 'resume', Escape: 'resume', h: 'help', o: 'settings', x: 'quit' },
+  settings: { Escape: 'closeSettings', o: 'closeSettings', r: 'toggleMotion' },
+  shop: { Escape: 'closeShop', u: 'closeShop' },
+};
+
+/** Opens a night of service; the first-shift coach rides along on night one until it has said goodbye. */
 export function startNight(app, nightIndex, seed = (Date.now() % 100000) + 1) {
-  app.night = createNight({ nightIndex, upgrades: app.campaign.upgrades, seed });
+  const coach = nightIndex === 0 && !app.campaign.coachDone;
+  app.night = createNight({ nightIndex, upgrades: app.campaign.upgrades, seed, coach });
   app.armView = createArmView();
   app.fx = createEffects();
   app.screen = 'night';
@@ -48,14 +61,26 @@ function finishNight(app) {
   saveCampaign(app.campaign);
   app.screen = 'results';
   app.t = 0;
+  app.resultsAt = performance.now();
 }
 
-/** Sends the night's new events to the effects and the audio, then clears them. */
+/** Whether the results screen still ignores input; wall-clock time, so it also holds at ?speed=20. */
+function settling(app) {
+  return app.screen === 'results' && performance.now() - app.resultsAt < RESULTS_GRACE_MS;
+}
+
+/** Sends the night's new events to the effects and the audio, then clears them; a retired coach is saved. */
 export function drainEvents(app) {
   const night = app.night;
   const calm = app.campaign.settings.reducedMotion;
   spawnFromEvents(app.fx, night.events, calm);
-  for (const e of night.events) playEvent(app.audio, e.type);
+  for (const e of night.events) {
+    playEvent(app.audio, e.type);
+    if (e.type === 'coachDone') {
+      app.campaign.coachDone = true;
+      saveCampaign(app.campaign);
+    }
+  }
   night.events.length = 0;
 }
 
@@ -78,7 +103,8 @@ export function updateApp(app, dt) {
     updateArmView(app.armView, app.night, dt, app.night.time, calm);
   }
   updateEffects(app.fx, dt);
-  updateMusic(app.audio, app.screen === 'night' && !app.overlay, app.night ? inRush(app.night) : false);
+  const mood = app.night ? { rush: inRush(app.night), hot: streakMultiplier(app.night.streak) >= 2 } : {};
+  updateMusic(app.audio, app.screen === 'night' && !app.overlay, mood);
 }
 
 /** Draws a night of service: kitchen, Octavia, stations, HUD and effects. */
@@ -92,10 +118,12 @@ function drawNight(ctx, app) {
   drawCounter(ctx);
   drawStations(ctx, night, t);
   drawOctavia(ctx, night, app.armView, t);
+  drawStationOverlays(ctx, night, t);
   drawClamPlate(ctx, night, t);
   drawPass(ctx, night, t);
   drawTrash(ctx);
   drawBins(ctx, t, app.hoverBin);
+  drawAtmosphere(ctx, night, t, calm);
   drawOrderBoard(ctx, night, t);
   drawHud(ctx, night, t);
   drawArmSlots(ctx, night, t);
@@ -151,12 +179,14 @@ export function command(app, id) {
   if (id.startsWith('buy:')) {
     const res = buyUpgrade(app.campaign, id.slice(4));
     if (res.ok) saveCampaign(app.campaign);
+    else playEvent(app.audio, 'invalid');
     return;
   }
   if (id.startsWith('night')) {
     app.mapSel = Number(id.slice(5));
     return;
   }
+  const toMap = () => { app.screen = 'map'; app.mapSel = Math.min(app.campaign.unlocked, NIGHTS.length) - 1; };
   const actions = {
     play: () => { app.screen = 'map'; },
     help: () => openOverlay(app, 'help'),
@@ -172,11 +202,16 @@ export function command(app, id) {
     shop: () => { app.overlay = 'shop'; },
     closeShop: () => { app.overlay = null; },
     title: () => { app.screen = 'title'; },
+    pause: () => { app.overlay = 'pause'; },
     resume: () => { app.overlay = null; },
     quit: () => { app.overlay = null; app.screen = 'map'; },
-    next: () => { if (app.summary.nightIndex + 1 < app.campaign.unlocked) startNight(app, app.summary.nightIndex + 1); },
+    next: () => {
+      const n = app.summary.nightIndex + 1;
+      if (n === NIGHTS.length) toMap();
+      else if (n < app.campaign.unlocked) startNight(app, n);
+    },
     retry: () => startNight(app, app.summary.nightIndex),
-    map: () => { app.screen = 'map'; app.mapSel = Math.min(app.campaign.unlocked, NIGHTS.length) - 1; },
+    map: toMap,
   };
   actions[id]?.();
 }
@@ -185,14 +220,20 @@ export function command(app, id) {
 export function handleKey(app, key) {
   unlockAudio(app.audio);
   const k = key.length === 1 ? key.toLowerCase() : key;
-  if (k === 'm' && app.screen !== 'results') {
+  if (settling(app)) return true;
+  if (k === 'm') {
     command(app, 'toggleSound');
     saveCampaign(app.campaign);
     return true;
   }
+  const shopOpen = app.overlay === 'shop' || (app.screen === 'results' && !app.overlay);
+  const upgrade = shopOpen && /^\d$/.test(k) ? UPGRADES[Number(k) - 1] : undefined;
+  if (upgrade) {
+    command(app, `buy:${upgrade.id}`);
+    return true;
+  }
   if (app.overlay) {
-    const map = { help: { h: 'closeHelp', Escape: 'closeHelp', Enter: 'closeHelp', ' ': 'closeHelp' }, pause: { p: 'resume', Escape: 'resume', h: 'help', o: 'settings', q: 'quit' }, settings: { Escape: 'closeSettings', o: 'closeSettings' }, shop: { Escape: 'closeShop', u: 'closeShop' } };
-    const id = map[app.overlay][k];
+    const id = OVERLAY_KEYS[app.overlay][k];
     if (id) command(app, id);
     return true;
   }
@@ -211,12 +252,12 @@ export function handleKey(app, key) {
     return true;
   }
   if (app.screen === 'results') {
-    const id = { Enter: 'next', r: 'retry', m: 'map', Escape: 'map' }[k];
+    const id = { Enter: 'next', r: 'retry', Escape: 'map' }[k];
     if (id) command(app, id);
     return !!id;
   }
   if (app.screen === 'night') {
-    if (k === 'p' || k === 'Escape') { app.overlay = 'pause'; return true; }
+    if (k === 'p' || k === 'Escape') { command(app, 'pause'); return true; }
     if (k === 'h') { openOverlay(app, 'help'); return true; }
     const action = actionForKey(app.night, key);
     if (!action) return false;
@@ -226,7 +267,7 @@ export function handleKey(app, key) {
   return false;
 }
 
-/** Pointer handling: buttons on every screen; during service, clicks and drags in the kitchen. */
+/** Pointer handling: buttons on every screen; during service, the pause button and clicks and drags in the kitchen. */
 export function handlePointer(app, kind, x, y) {
   if (kind === 'down') unlockAudio(app.audio);
   if (app.screen === 'night' && !app.overlay) {
@@ -234,6 +275,10 @@ export function handlePointer(app, kind, x, y) {
     const hit = hitTest(areas, x, y);
     if (kind === 'move') {
       app.hoverBin = hit?.kind === 'bin' ? hit.index : null;
+      return;
+    }
+    if (kind === 'down' && hit?.kind === 'pause') {
+      command(app, 'pause');
       return;
     }
     if (kind === 'down' && hit) {
@@ -248,7 +293,7 @@ export function handlePointer(app, kind, x, y) {
     if (kind === 'up') app.drag = null;
     return;
   }
-  if (kind !== 'down') return;
+  if (kind !== 'down' || settling(app)) return;
   const btn = app.buttons.find((b) => x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h && !b.disabled);
   if (btn) command(app, btn.id);
 }

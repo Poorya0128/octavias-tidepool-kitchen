@@ -18,6 +18,12 @@ export const ARM_REST = ARM_ROOTS.map((_, i) => ({ x: LAYOUT.octavia.x + (i - 3.
 /** Where a holding arm lifts its item so the player can see it: a row above the counter. */
 export const ARM_HOLD = ARM_ROOTS.map((_, i) => ({ x: 516 + i * 32.6, y: 404 + Math.abs(i - 3.5) * 3 }));
 
+/** Centre of an ingredient bin on the counter, where an arm reaches in to grab. */
+export function binPoint(index) {
+  const b = LAYOUT.bins;
+  return { x: b.x + index * (b.w + b.gap) + b.w / 2, y: b.y + 40 };
+}
+
 /** A fresh set of idle arms. */
 export function createArms() {
   return ARM_ROOTS.map((_, id) => ({
@@ -26,9 +32,10 @@ export function createArms() {
   }));
 }
 
-/** Seconds an arm needs to reach a target, with the Quicker Arms upgrade applied. */
+/** Seconds an arm needs to reach a target, with Quicker Arms and a flowing Ink Burst applied. */
 export function reachTime(state) {
-  return state.upgrades.quickArms ? TUNING.quickReachTime : TUNING.reachTime;
+  const base = state.upgrades.quickArms ? TUNING.quickReachTime : TUNING.reachTime;
+  return state.ink.active ? base / TUNING.inkReachBoost : base;
 }
 
 /** Sends an arm's tip toward a point; the logic treats the job as begun, the drawing animates it. */

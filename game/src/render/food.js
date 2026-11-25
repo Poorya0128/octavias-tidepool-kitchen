@@ -6,8 +6,33 @@
 import { PALETTE } from '../config.js';
 import { RECIPE } from '../data/recipes.js';
 import { blob, oval, roundRect, TAU } from './draw.js';
+import { contactShadow } from './light.js';
 
 const INK = PALETTE.ink;
+
+/** Form shadow on a round shape lit from the top left: a dark crescent at its lower right. */
+function shade(ctx, x, y, r, alpha = 0.38) {
+  if (r < 3) return;
+  const g = ctx.createRadialGradient(x - r * 0.4, y - r * 0.45, r * 0.2, x, y, r);
+  g.addColorStop(0, 'rgba(20,10,30,0)');
+  g.addColorStop(0.72, 'rgba(20,10,30,0)');
+  g.addColorStop(1, `rgba(20,10,30,${alpha})`);
+  ctx.fillStyle = g;
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, TAU);
+  ctx.fill();
+}
+
+/** A thin bright arc along the lit upper-left edge of an ellipse. */
+function rimLight(ctx, x, y, rx, ry, width, alpha = 0.85) {
+  ctx.strokeStyle = `rgba(255,255,255,${alpha})`;
+  ctx.lineWidth = width;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.ellipse(x, y, rx, ry, 0, Math.PI * 1.08, Math.PI * 1.42);
+  ctx.stroke();
+  ctx.lineCap = 'butt';
+}
 
 /** A soft radial highlight that makes round food look glossy. */
 function gloss(ctx, x, y, r, alpha = 0.55) {
@@ -91,6 +116,7 @@ const PAINT = {
       const cx = x + dx * s;
       const cy = y + dy * s;
       blob(ctx, cx, cy, s * 0.13, '#5cc79b', INK, 2);
+      shade(ctx, cx, cy, s * 0.13);
       gloss(ctx, cx, cy, s * 0.13, 0.7);
     }
   },
@@ -166,6 +192,7 @@ const PAINT = {
       ctx.fillStyle = '#f2c477';
       ctx.fillRect(x - s * 0.36, y - s * 0.22, s * 0.72, s * 0.12);
       grillMarks(ctx, x, y, s * 0.72, s * 0.44);
+      gloss(ctx, x - s * 0.14, y - s * 0.1, s * 0.3, 0.4);
       ctx.restore();
       roundRect(ctx, x - s * 0.36, y - s * 0.22, s * 0.72, s * 0.44, s * 0.12);
       ctx.lineWidth = 2.5;
@@ -180,9 +207,12 @@ const PAINT = {
     ctx.closePath();
     ctx.fillStyle = cooked ? '#fffaf0' : '#ead9b4';
     ctx.fill();
+    ctx.fillStyle = vgrad(ctx, y - s * 0.3, y + s * 0.22, 'rgba(255,255,255,0.3)', 'rgba(120,90,50,0.25)');
+    ctx.fill();
     ctx.lineWidth = 2.5;
     ctx.strokeStyle = INK;
     ctx.stroke();
+    if (cooked) gloss(ctx, x - s * 0.1, y - s * 0.12, s * 0.22, 0.85);
     ctx.fillStyle = cooked ? '#e7dcc6' : '#c7ad7c';
     for (let i = 0; i < 9; i++) {
       const gx = x + (((i * 37) % 9) / 9 - 0.5) * s * 0.55;
@@ -229,6 +259,8 @@ const PAINT = {
     ctx.fillStyle = seared ? '#8a5a34' : '#b98a5e';
     ctx.fill();
     ctx.clip();
+    ctx.fillStyle = vgrad(ctx, y - s * 0.32, y + s * 0.02, 'rgba(255,236,200,0.35)', 'rgba(50,25,10,0.3)');
+    ctx.fillRect(x - s * 0.42, y - s * 0.42, s * 0.84, s * 0.46);
     ctx.strokeStyle = seared ? 'rgba(40,20,10,0.6)' : 'rgba(110,70,40,0.55)';
     ctx.lineWidth = 2;
     for (let i = 0; i < 3; i++) {
@@ -262,6 +294,7 @@ const PAINT = {
       return;
     }
     blob(ctx, x, y + s * 0.06, s * 0.3, 'rgba(232,244,255,0.95)', INK, 2.5);
+    shade(ctx, x, y + s * 0.06, s * 0.3, 0.3);
     ctx.fillStyle = '#c8a26b';
     roundRect(ctx, x - s * 0.08, y - s * 0.42, s * 0.16, s * 0.16, s * 0.04);
     ctx.fill();
@@ -303,6 +336,7 @@ const PAINT = {
     ctx.strokeStyle = INK;
     ctx.stroke();
     blob(ctx, x, y, s * 0.29, '#ff9f1c', INK, 2.5);
+    shade(ctx, x, y, s * 0.29, 0.45);
     gloss(ctx, x, y, s * 0.29, 0.6);
   },
   pepper(ctx, x, y, s, prep) {
@@ -316,6 +350,8 @@ const PAINT = {
     ctx.fillStyle = seared ? '#b8262f' : '#e63946';
     ctx.fill();
     ctx.clip();
+    ctx.fillStyle = vgrad(ctx, y - s * 0.3, y + s * 0.35, 'rgba(255,255,255,0.2)', 'rgba(60,0,10,0.4)');
+    ctx.fillRect(x - s * 0.5, y - s * 0.4, s, s * 0.8);
     if (seared) grillMarks(ctx, x + s * 0.05, y - s * 0.02, s * 0.6, s * 0.36);
     ctx.restore();
     ctx.beginPath();
@@ -340,29 +376,35 @@ export function drawIngredient(ctx, ingId, x, y, s, prep = null, t = 0) {
   PAINT[ingId](ctx, x, y, s, prep, t);
 }
 
-/** A soft shadow under a vessel. */
+/** A soft shadow under a vessel, offset away from the top-left light. */
 function shadow(ctx, x, y, rx, ry) {
-  ctx.fillStyle = 'rgba(5,25,29,0.3)';
-  ctx.beginPath();
-  ctx.ellipse(x, y, rx, ry, 0, 0, TAU);
-  ctx.fill();
+  contactShadow(ctx, x + rx * 0.06, y + ry * 0.15, rx * 1.08, ry * 1.25, 0.55);
+}
+
+/** A vertical gradient from `top` to `bottom` colour across an object. */
+function vgrad(ctx, y0, y1, top, bottom) {
+  const g = ctx.createLinearGradient(0, y0, 0, y1);
+  g.addColorStop(0, top);
+  g.addColorStop(1, bottom);
+  return g;
 }
 
 const VESSELS = {
   plate(ctx, x, y, u) {
     shadow(ctx, x, y + 14 * u, 92 * u, 26 * u);
-    oval(ctx, x, y, 92 * u, 34 * u, '#fff6e6', INK, 3);
-    oval(ctx, x, y - 2 * u, 70 * u, 24 * u, '#f3e6cf', 'rgba(59,42,77,0.25)', 2);
+    oval(ctx, x, y, 92 * u, 34 * u, vgrad(ctx, y - 34 * u, y + 34 * u, '#ffffff', '#e2d0b4'), INK, 3);
+    oval(ctx, x, y - 2 * u, 70 * u, 24 * u, vgrad(ctx, y - 26 * u, y + 22 * u, '#e4d5ba', '#fbf3e4'), 'rgba(59,42,77,0.25)', 2);
+    if (u > 0.3) rimLight(ctx, x, y, 84 * u, 29 * u, 3 * u);
   },
   platter(ctx, x, y, u) {
     shadow(ctx, x, y + 16 * u, 104 * u, 30 * u);
-    oval(ctx, x, y, 104 * u, 38 * u, '#ff9e80', INK, 3);
-    oval(ctx, x, y - 2 * u, 90 * u, 30 * u, '#fff6e6', 'rgba(59,42,77,0.3)', 2);
-    ctx.fillStyle = '#ffd166';
+    oval(ctx, x, y, 104 * u, 38 * u, vgrad(ctx, y - 38 * u, y + 38 * u, '#ffc2a8', '#e9765a'), INK, 3);
+    oval(ctx, x, y - 2 * u, 90 * u, 30 * u, vgrad(ctx, y - 32 * u, y + 28 * u, '#efe0c6', '#fff8ec'), 'rgba(59,42,77,0.3)', 2);
     for (let i = 0; i < 10; i++) {
       const a = (i / 10) * TAU;
       blob(ctx, x + Math.cos(a) * 97 * u, y + Math.sin(a) * 34 * u, 3.2 * u, '#ffd166', null);
     }
+    if (u > 0.3) rimLight(ctx, x, y, 98 * u, 33 * u, 3 * u);
   },
   bowl(ctx, x, y, u) {
     shadow(ctx, x, y + 34 * u, 70 * u, 16 * u);
@@ -370,7 +412,12 @@ const VESSELS = {
     ctx.moveTo(x - 72 * u, y - 8 * u);
     ctx.bezierCurveTo(x - 70 * u, y + 48 * u, x + 70 * u, y + 48 * u, x + 72 * u, y - 8 * u);
     ctx.closePath();
-    ctx.fillStyle = '#2f8f9d';
+    const glaze = ctx.createLinearGradient(x - 72 * u, 0, x + 72 * u, 0);
+    glaze.addColorStop(0, '#2c8592');
+    glaze.addColorStop(0.28, '#5fc2c4');
+    glaze.addColorStop(0.62, '#2f8f9d');
+    glaze.addColorStop(1, '#1a5560');
+    ctx.fillStyle = glaze;
     ctx.fill();
     ctx.lineWidth = 3;
     ctx.strokeStyle = INK;
@@ -381,8 +428,18 @@ const VESSELS = {
     ctx.moveTo(x - 58 * u, y + 18 * u);
     ctx.bezierCurveTo(x - 30 * u, y + 30 * u, x + 30 * u, y + 30 * u, x + 58 * u, y + 18 * u);
     ctx.stroke();
+    if (u > 0.3) {
+      ctx.strokeStyle = 'rgba(255,255,255,0.55)';
+      ctx.lineWidth = 4 * u;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(x - 54 * u, y + 4 * u);
+      ctx.quadraticCurveTo(x - 50 * u, y + 20 * u, x - 36 * u, y + 28 * u);
+      ctx.stroke();
+      ctx.lineCap = 'butt';
+    }
     oval(ctx, x, y - 8 * u, 72 * u, 18 * u, '#fff6e6', INK, 3);
-    oval(ctx, x, y - 7 * u, 62 * u, 13 * u, '#d9efe8', null);
+    oval(ctx, x, y - 7 * u, 62 * u, 13 * u, vgrad(ctx, y - 20 * u, y + 6 * u, '#5f998f', '#b6dbd2'), null);
   },
   cup(ctx, x, y, u) {
     shadow(ctx, x, y + 36 * u, 46 * u, 10 * u);
@@ -392,13 +449,30 @@ const VESSELS = {
     ctx.lineTo(x + 34 * u, y + 34 * u);
     ctx.lineTo(x + 46 * u, y - 30 * u);
     ctx.closePath();
-    ctx.fillStyle = 'rgba(214,240,245,0.55)';
+    const glass = ctx.createLinearGradient(x - 46 * u, 0, x + 46 * u, 0);
+    glass.addColorStop(0, 'rgba(235,252,255,0.75)');
+    glass.addColorStop(0.35, 'rgba(214,240,245,0.4)');
+    glass.addColorStop(1, 'rgba(150,200,215,0.6)');
+    ctx.fillStyle = glass;
     ctx.fill();
     ctx.lineWidth = 3;
     ctx.strokeStyle = INK;
     ctx.stroke();
   },
 };
+
+/** The glass cup's front highlight, drawn over its contents. */
+function cupGlint(ctx, x, y, u) {
+  if (u <= 0.3) return;
+  ctx.strokeStyle = 'rgba(255,255,255,0.7)';
+  ctx.lineWidth = 4 * u;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(x - 34 * u, y - 20 * u);
+  ctx.lineTo(x - 27 * u, y + 24 * u);
+  ctx.stroke();
+  ctx.lineCap = 'butt';
+}
 
 /** Whether a part is on the dish. */
 const hasPart = (parts, ing, prep) => parts.some((p) => p.ing === ing && p.prep === prep);
@@ -415,11 +489,19 @@ const DISHES = {
       return;
     }
     if (hasPart(parts, 'kelp', 'chop')) {
-      ctx.fillStyle = '#2f7d4f';
+      ctx.fillStyle = vgrad(ctx, y - 18 * u, y + 10 * u, '#48a56b', '#1f5a38');
       roundRect(ctx, x - 62 * u, y - 18 * u, 124 * u, 28 * u, 8 * u);
       ctx.fill();
       ctx.lineWidth = 2.5;
       ctx.strokeStyle = INK;
+      ctx.stroke();
+      ctx.strokeStyle = 'rgba(170,240,190,0.3)';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      for (let i = -5; i <= 5; i++) {
+        ctx.moveTo(x + i * 11 * u, y - 15 * u);
+        ctx.lineTo(x + i * 11 * u + 6 * u, y + 7 * u);
+      }
       ctx.stroke();
     }
     if (hasPart(parts, 'rice', 'steam')) {
@@ -429,6 +511,12 @@ const DISHES = {
       ctx.lineWidth = 2;
       ctx.strokeStyle = 'rgba(59,42,77,0.5)';
       ctx.stroke();
+      ctx.fillStyle = '#e4d6bd';
+      for (let i = 0; i < 14; i++) {
+        ctx.beginPath();
+        ctx.ellipse(x - 46 * u + ((i * 37) % 92) * u, y - 12 * u + ((i * 7) % 12) * u, 3.2 * u, 1.6 * u, i, 0, TAU);
+        ctx.fill();
+      }
     }
     if (hasPart(parts, 'salt', 'raw')) drawIngredient(ctx, 'salt', x + 34 * u, y - 18 * u, 30 * u);
   } },
@@ -441,6 +529,13 @@ const DISHES = {
       ctx.lineWidth = 2;
       ctx.strokeStyle = 'rgba(59,42,77,0.45)';
       ctx.stroke();
+      ctx.fillStyle = '#e2d3b8';
+      for (let i = 0; i < 12; i++) {
+        ctx.beginPath();
+        ctx.ellipse(x + (((i * 37) % 11) / 11 - 0.5) * 90 * u, y - (14 + ((i * 53) % 7) * 2) * u, 3.4 * u, 1.7 * u, i, 0, TAU);
+        ctx.fill();
+      }
+      gloss(ctx, x - 18 * u, y - 22 * u, 30 * u, 0.75);
     }
     if (hasPart(parts, 'shroom', 'sear')) {
       drawIngredient(ctx, 'shroom', x - 24 * u, y - 24 * u, 34 * u, 'sear');
@@ -483,6 +578,7 @@ const DISHES = {
       ctx.fillStyle = '#fbf3e4';
       ctx.fill();
     }
+    cupGlint(ctx, x, y, u);
     if (hasPart(parts, 'jelly', 'steam')) drawIngredient(ctx, 'jelly', x, y - 16 * u, 96 * u, 'steam');
     if (hasPart(parts, 'pearl', 'raw')) drawIngredient(ctx, 'pearl', x, y - 40 * u, 40 * u);
     if (done) {

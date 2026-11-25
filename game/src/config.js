@@ -57,6 +57,13 @@ export const TUNING = {
   twinsWindow: 12,
   shelbyChangeAt: 0.55,
   shelbyPatienceGift: 10,
+  grumbleAt: 0.35,
+  inkDuration: 6,
+  inkPerfectTake: 0.2,
+  inkPerfectServe: 0.1,
+  inkMissKeep: 0.5,
+  inkReachBoost: 1.6,
+  inkChopBoost: 1.5,
 };
 
 /** Ink Streak multipliers, indexed by how many on-time perfect serves in a row. */
@@ -97,6 +104,8 @@ export const LAYOUT = {
   status: { x: 1030, y: 154, w: 238, h: 34 },
   bins: { x: 12, y: 658, w: 102, h: 134, gap: 6 },
   keys: { x: 1094, y: 658, w: 174, h: 134 },
+  ink: { x: 12, y: 538, w: 104, h: 110 },
+  pauseBtn: { x: 1232, y: 154, w: 36, h: 34 },
 };
 
 /** Where Octavia's arm tip goes for each station slot (grill and steamer have two slots). */

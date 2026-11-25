@@ -7,9 +7,17 @@ import { LAYOUT, TUNING } from './config.js';
 import { CUSTOMERS } from './data/customers.js';
 import { RECIPE } from './data/recipes.js';
 import { ARM_HOLD, holdingArms, releaseArm, sendArm } from './arms.js';
+import { chargeInk, spillInk } from './ink.js';
 import { criticLiveStars, criticVerdict, scoreServe } from './scoring.js';
 
 const PLATE_POINT = { x: LAYOUT.plate.x, y: LAYOUT.plate.y - 12 };
+
+/** A customer speaks a voice line; it is chosen by ticket id so the seeded draws stay untouched. */
+function say(state, ticket, kind) {
+  const lines = CUSTOMERS[ticket.customerId].lines[kind];
+  state.speech.push({ ticketId: ticket.id, customerId: ticket.customerId, kind, text: lines[ticket.id % lines.length], at: state.time });
+  if (state.speech.length > 6) state.speech.shift();
+}
 
 /** Adds a ticket for a customer; twins share a pair id. */
 export function spawnTicket(state, customerId, recipeId, pairId = null) {
@@ -18,11 +26,12 @@ export function spawnTicket(state, customerId, recipeId, pairId = null) {
   const ticket = {
     id: state.nextTicketId++, customerId, recipeId, pairId,
     patience: customer.patience, maxPatience: customer.patience, drain: 1 / calm,
-    born: state.time, changed: false, critic: !!customer.vip,
+    born: state.time, changed: false, grumbled: false, critic: !!customer.vip,
   };
   state.tickets.push(ticket);
   if (state.selectedTicket === null) state.selectedTicket = ticket.id;
-  state.events.push({ type: 'spawn', ticket: ticket.id, customer: customerId });
+  state.emit({ type: 'spawn', ticket: ticket.id, customer: customerId });
+  say(state, ticket, 'arrive');
   return ticket;
 }
 
@@ -44,7 +53,7 @@ export function spawnRegular(state) {
 /** Madame Mantis arrives with her standing order, the Grand Reef Platter. */
 export function spawnCritic(state) {
   spawnTicket(state, 'mantis', 'platter');
-  state.events.push({ type: 'criticArrives' });
+  state.emit({ type: 'criticArrives' });
 }
 
 /** Share of patience left on a ticket, 0..1. */
@@ -52,18 +61,25 @@ export function patienceShare(ticket) {
   return Math.max(0, ticket.patience / ticket.maxPatience);
 }
 
-/** Drains patience, lets Shelby change her mind once, and walks out customers who waited too long. */
+/**
+ * Drains patience (held while an Ink Burst flows), lets Shelby change her mind once, has each
+ * customer grumble once when patience runs low, and walks out customers who waited too long.
+ */
 export function updateTickets(state, dt) {
   for (const ticket of [...state.tickets]) {
-    ticket.patience -= dt * ticket.drain;
+    if (!state.ink.active) ticket.patience -= dt * ticket.drain;
     if (ticket.customerId === 'shelby' && !ticket.changed && patienceShare(ticket) <= TUNING.shelbyChangeAt) {
       const options = state.cfg.recipes.filter((r) => r !== ticket.recipeId);
       ticket.recipeId = state.rng.pick(options);
       ticket.changed = true;
       ticket.patience = Math.min(ticket.maxPatience, ticket.patience + TUNING.shelbyPatienceGift);
       state.stats.ordersChanged++;
-      state.events.push({ type: 'orderChanged', ticket: ticket.id });
+      state.emit({ type: 'orderChanged', ticket: ticket.id });
       state.toast('Shelby swapped shells and changed her order!', '#ffd166');
+    }
+    if (!ticket.grumbled && patienceShare(ticket) < TUNING.grumbleAt) {
+      ticket.grumbled = true;
+      say(state, ticket, 'wait');
     }
     if (ticket.patience <= 0) missTicket(state, ticket);
   }
@@ -71,14 +87,16 @@ export function updateTickets(state, dt) {
   state.critic.live = critic ? criticLiveStars(patienceShare(critic)) : null;
 }
 
-/** A customer leaves unserved: the Ink Streak breaks. */
+/** A customer leaves unserved: the Ink Streak breaks and half the ink spills. */
 function missTicket(state, ticket) {
   removeTicket(state, ticket.id);
   state.stats.missed++;
-  if (state.streak > 0) state.events.push({ type: 'streakBroken' });
+  if (state.streak > 0) state.emit({ type: 'streakBroken' });
   state.streak = 0;
+  spillInk(state);
   if (ticket.critic) state.critic.reviews.push(1);
-  state.events.push({ type: 'miss', ticket: ticket.id, customer: ticket.customerId });
+  state.emit({ type: 'miss', ticket: ticket.id, customer: ticket.customerId });
+  say(state, ticket, 'angry');
   state.toast(`${CUSTOMERS[ticket.customerId].name} swam off hungry`, '#ef5b4c');
 }
 
@@ -98,7 +116,7 @@ export function selectTicket(state, id) {
   } else {
     return { ok: false, reason: 'That customer has left' };
   }
-  state.events.push({ type: 'select' });
+  state.emit({ type: 'select' });
   return { ok: true };
 }
 
@@ -145,7 +163,7 @@ export function usePlate(state) {
   for (const arm of held) {
     if (!fits(plate.recipeId, plate.parts, arm.item)) continue;
     plate.parts.push(arm.item);
-    state.events.push({ type: 'plateAdd', ...PLATE_POINT, ing: arm.item.ing });
+    state.emit({ type: 'plateAdd', ...PLATE_POINT, ing: arm.item.ing });
     releaseArm(state, arm);
     sendArm(state, arm, PLATE_POINT);
     placed++;
@@ -162,10 +180,10 @@ export function finishPlate(state) {
   const recipe = RECIPE[plate.recipeId];
   const warmth = state.upgrades.biggerPlate ? TUNING.biggerPlateWarmth : TUNING.plateWarmth;
   state.pass.push({ id: state.nextPlateId++, recipeId: plate.recipeId, parts: plate.parts, warmth, maxWarmth: warmth });
-  state.events.push({ type: 'finish', ...PLATE_POINT, recipe: recipe.id, word: recipe.finish });
+  state.emit({ type: 'finish', ...PLATE_POINT, recipe: recipe.id, word: recipe.finish });
   plate.recipeId = null;
   plate.parts = [];
-  return { ok: true, info: `${recipe.finish}!` };
+  return { ok: true };
 }
 
 /** Plates on the pass cool down; a cold plate loses its perfect tips. */
@@ -199,14 +217,16 @@ export function servePass(state, index = null) {
   state.stats.tips += result.speedTip + result.perfectTip;
   state.streak = result.nextStreak;
   state.bestStreak = Math.max(state.bestStreak, state.streak);
+  if (result.perfect) chargeInk(state, TUNING.inkPerfectServe);
   if (ticket.critic) {
     const stars = criticVerdict(plate.parts, share, cold);
     state.critic.reviews.push(stars);
-    state.events.push({ type: 'criticVerdict', stars });
+    state.emit({ type: 'criticVerdict', stars });
   }
   if (ticket.pairId !== null) twinBonus(state, ticket.pairId);
   const slot = slotPoint(i);
-  state.events.push({ type: 'serve', ...slot, coins: result.total, perfect: result.perfect, mult: result.mult, ticket: ticket.id, customer: ticket.customerId, streak: state.streak });
+  state.emit({ type: 'serve', ...slot, coins: result.total, perfect: result.perfect, mult: result.mult, ticket: ticket.id, customer: ticket.customerId, streak: state.streak });
+  say(state, ticket, 'happy');
   if (cold) state.toast('Cold plate: no perfect tip', '#9fc7d6');
   return { ok: true, result };
 }
@@ -221,7 +241,7 @@ function twinBonus(state, pairId) {
   if (state.time - first <= TUNING.twinsWindow) {
     state.coins += TUNING.twinsBonus;
     state.stats.twins++;
-    state.events.push({ type: 'twinBonus', ...slotPoint(0), coins: TUNING.twinsBonus });
+    state.emit({ type: 'twinBonus', ...slotPoint(0), coins: TUNING.twinsBonus });
     state.toast(`Twin bonus +${TUNING.twinsBonus}`, '#7fd1b9');
   }
   delete state.twinsServed[pairId];
@@ -241,26 +261,26 @@ export function trash(state, clearBurnt) {
   const held = holdingArms(state)[0];
   const jar = { x: LAYOUT.trash.x + LAYOUT.trash.w / 2, y: LAYOUT.trash.y + 20 };
   if (held) {
-    state.events.push({ type: 'trash', ...ARM_HOLD[held.id], ing: held.item.ing });
+    state.emit({ type: 'trash', ...ARM_HOLD[held.id], ing: held.item.ing });
     releaseArm(state, held);
     sendArm(state, held, jar);
-    return { ok: true, info: 'Binned' };
+    return { ok: true };
   }
   for (const [id, st] of Object.entries(state.stations)) {
     const i = st.slots.findIndex((s) => s?.phase === 'burnt');
-    if (i >= 0 && clearBurnt(state, id, i)) return { ok: true, info: 'Burnt food binned' };
+    if (i >= 0 && clearBurnt(state, id, i)) return { ok: true };
   }
   if (state.plate.parts.length) {
-    state.events.push({ type: 'trash', ...PLATE_POINT });
+    state.emit({ type: 'trash', ...PLATE_POINT });
     state.plate.parts = [];
     state.plate.recipeId = null;
-    return { ok: true, info: 'Plate cleared' };
+    return { ok: true };
   }
   const stray = state.pass.findIndex((p) => !ticketForPlate(state, p));
   if (stray >= 0) {
-    state.events.push({ type: 'trash', ...slotPoint(stray) });
+    state.emit({ type: 'trash', ...slotPoint(stray) });
     state.pass.splice(stray, 1);
-    return { ok: true, info: 'Unwanted plate binned' };
+    return { ok: true };
   }
   return { ok: false, reason: 'Nothing to bin' };
 }

@@ -18,23 +18,24 @@ export function chooseKeyPot(state) {
   return by((s) => s?.phase === 'burnt') ?? by((s) => isUsable(s)) ?? (holdingSimmer ? by((s) => !s) : null) ?? by((s) => !!s) ?? 'pot0';
 }
 
-/** Rectangles the pointer can hit during service, in logical pixels. */
+/** Rectangles the pointer can hit during service, in logical pixels; the pots stop where the Clam Plate starts. */
 export function nightHitAreas(state) {
-  const areas = [];
+  const areas = [{ kind: 'pause', ...LAYOUT.pauseBtn }];
   const b = LAYOUT.bins;
   INGREDIENTS.forEach((ing, i) => areas.push({ kind: 'bin', ing: ing.id, index: i, x: b.x + i * (b.w + b.gap), y: b.y, w: b.w, h: b.h }));
   const s = LAYOUT.stations;
+  const p = LAYOUT.plate;
+  const plate = { kind: 'plate', x: p.x - p.w / 2, y: p.y - 92, w: p.w, h: 150 };
   areas.push({ kind: 'station', id: 'board', x: s.board.x, y: s.board.y, w: s.board.w, h: s.board.h });
-  areas.push({ kind: 'station', id: 'pot0', x: s.pot0.x, y: s.pot0.y, w: s.pot0.w, h: s.pot0.h + 20 });
-  areas.push({ kind: 'station', id: 'pot1', x: s.pot1.x, y: s.pot1.y, w: s.pot1.w, h: s.pot1.h + 20 });
+  for (const id of ['pot0', 'pot1']) areas.push({ kind: 'station', id, x: s[id].x, y: s[id].y, w: s[id].w, h: plate.y - s[id].y });
   areas.push({ kind: 'station', id: 'grill', slot: 0, x: s.grill.x, y: s.grill.y - 30, w: s.grill.w / 2, h: s.grill.h + 30 });
   areas.push({ kind: 'station', id: 'grill', slot: 1, x: s.grill.x + s.grill.w / 2, y: s.grill.y - 30, w: s.grill.w / 2, h: s.grill.h + 30 });
   areas.push({ kind: 'station', id: 'steamer', slot: 0, x: s.steamer.x, y: s.steamer.y, w: s.steamer.w, h: 128 });
   areas.push({ kind: 'station', id: 'steamer', slot: 1, x: s.steamer.x, y: s.steamer.y + 128, w: s.steamer.w, h: s.steamer.h - 128 });
-  const p = LAYOUT.plate;
-  areas.push({ kind: 'plate', x: p.x - p.w / 2, y: p.y - 92, w: p.w, h: 150 });
+  areas.push(plate);
   const tr = LAYOUT.trash;
   areas.push({ kind: 'trash', x: tr.x, y: tr.y, w: tr.w, h: tr.h });
+  areas.push({ kind: 'ink', ...LAYOUT.ink });
   state.pass.forEach((_, i) => {
     const c = slotPoint(i);
     areas.push({ kind: 'pass', index: i, x: c.x - 90, y: c.y - 64, w: 180, h: 128 });
@@ -49,13 +50,14 @@ export function hitTest(areas, x, y) {
   return areas.find((a) => x >= a.x && x <= a.x + a.w && y >= a.y && y <= a.y + a.h) ?? null;
 }
 
-/** The night action a clicked area stands for. */
+/** The night action a clicked area stands for (the pause button is a screen command, not an action). */
 export function actionForArea(area) {
   switch (area.kind) {
     case 'bin': return { type: 'grab', ing: area.ing };
     case 'station': return { type: 'station', id: area.id, slot: area.slot ?? null };
     case 'plate': return { type: 'plate' };
     case 'trash': return { type: 'trash' };
+    case 'ink': return { type: 'ink' };
     case 'pass': return { type: 'serve', index: area.index };
     case 'ticket': return { type: 'select', id: area.id };
     default: return null;
@@ -72,13 +74,21 @@ export function actionForKey(state, key) {
   if (k === ' ' || k === 'Enter') return { type: 'plate' };
   if (k === 's') return { type: 'serve' };
   if (k === 'Tab') return { type: 'cycle' };
+  if (k === 'i') return { type: 'ink' };
   if (k === 'Backspace' || k === 'Delete') return { type: 'trash' };
   return null;
 }
 
+/** The key the game reads: digits by their physical key (so AZERTY needs no Shift), else `e.key`. */
+function keyName(e) {
+  const digit = /^(?:Digit|Numpad)(\d)$/.exec(e.code ?? '');
+  return digit ? digit[1] : e.key;
+}
+
 /**
  * Wires the canvas and window to the app: `onKey(key, event)`, `onPointer(kind, x, y)` with
- * kind 'down', 'up' or 'move' in logical coordinates.
+ * kind 'down', 'up' or 'move' in logical coordinates. Browser shortcuts (Ctrl, Cmd, Alt) pass
+ * through untouched, and Tab never moves the focus off the game.
  */
 export function bindInput(canvas, { onKey, onPointer }) {
   const toLogical = (e) => {
@@ -86,8 +96,10 @@ export function bindInput(canvas, { onKey, onPointer }) {
     return { x: ((e.clientX - r.left) * VIEW_W) / r.width, y: ((e.clientY - r.top) * VIEW_H) / r.height };
   };
   window.addEventListener('keydown', (e) => {
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.key === 'Tab') e.preventDefault();
     if (e.repeat) return;
-    if (onKey(e.key, e)) e.preventDefault();
+    if (onKey(keyName(e), e)) e.preventDefault();
   });
   canvas.addEventListener('pointerdown', (e) => {
     const p = toLogical(e);

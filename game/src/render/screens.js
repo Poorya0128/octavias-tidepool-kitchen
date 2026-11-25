@@ -9,14 +9,15 @@ import { NIGHTS } from '../data/nights.js';
 import { RECIPE } from '../data/recipes.js';
 import { UPGRADES, totalStars } from '../campaign.js';
 import { blob, keycap, label, oval, panel, paragraph, roundRect, star, starRow, TAU, text } from './draw.js';
+import { CUSTOMERS } from '../data/customers.js';
 import { drawCustomer } from './customers.js';
 import { drawFinishedDish, drawIngredient } from './food.js';
 import { drawOctaviaPortrait } from './octopus.js';
 
 const INK = PALETTE.ink;
 
-/** Deep water with light rays, a sand floor, coral and kelp. */
-export function drawSea(ctx, t, calm) {
+/** Deep water with light rays, a sand floor, coral, kelp and fish schools at the `fish` rows. */
+export function drawSea(ctx, t, calm, fish = [150, 420]) {
   const g = ctx.createLinearGradient(0, 0, 0, 800);
   g.addColorStop(0, '#1b7f95');
   g.addColorStop(0.55, '#0e3b43');
@@ -70,35 +71,133 @@ export function drawSea(ctx, t, calm) {
     const y = 800 - ((t * (20 + (i % 5) * 9) + i * 97) % 820);
     blob(ctx, x + Math.sin(t + i) * 6, y, 2 + (i % 4), 'rgba(214,250,255,0.18)', 'rgba(214,250,255,0.5)', 1);
   }
+  drawFishSchool(ctx, t, calm, fish);
 }
 
-/** A chunky button; returns its rectangle with an id. */
+/** Two little schools of reef fish drifting across the water at the given rows. */
+function drawFishSchool(ctx, t, calm, [top, low]) {
+  const drift = calm ? 0 : t;
+  for (const [row, speed, col, dir] of [[top, 26, '#ffd166', 1], [low, 18, '#ff9aa8', -1]]) {
+    for (let i = 0; i < 6; i++) {
+      const run = (drift * speed + i * 34) % 1500;
+      const x = dir > 0 ? run - 110 : 1390 - run;
+      const y = row + (i % 3) * 16 + Math.sin(drift * 2 + i) * 4;
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.scale(dir, 1);
+      ctx.fillStyle = col;
+      ctx.beginPath();
+      ctx.moveTo(-8, 0);
+      ctx.lineTo(-15, -5);
+      ctx.lineTo(-15, 5);
+      ctx.closePath();
+      ctx.ellipse(0, 0, 9, 5, 0, 0, TAU);
+      ctx.fill();
+      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = INK;
+      ctx.stroke();
+      blob(ctx, 4, -1, 1.4, INK, null);
+      ctx.restore();
+    }
+  }
+}
+
+/** A chunky glossy button lit from above; returns its rectangle with an id. */
 function button(ctx, id, str, x, y, w, h, { key = null, primary = false, disabled = false } = {}) {
-  panel(ctx, x, y, w, h, { fill: disabled ? '#6b7f84' : primary ? PALETTE.coral : PALETTE.pearl, stroke: INK, r: 16, line: 3.5 });
-  text(ctx, str, x + w / 2 - (key ? 18 : 0), y + h / 2 + 8, { size: 22, color: primary ? PALETTE.pearl : INK, align: 'center', outline: primary ? INK : null, line: 4 });
+  const [top, bottom] = disabled ? ['#9aaaae', '#6b7f84'] : primary ? ['#ffa384', PALETTE.coralDark] : ['#fffdf7', '#efdcbf'];
+  ctx.fillStyle = 'rgba(3,18,22,0.4)';
+  roundRect(ctx, x + 3, y + 6, w, h, 16);
+  ctx.fill();
+  const g = ctx.createLinearGradient(0, y, 0, y + h);
+  g.addColorStop(0, top);
+  g.addColorStop(1, bottom);
+  roundRect(ctx, x, y, w, h, 16);
+  ctx.fillStyle = g;
+  ctx.fill();
+  ctx.lineWidth = 3.5;
+  ctx.strokeStyle = INK;
+  ctx.stroke();
+  ctx.fillStyle = 'rgba(255,255,255,0.3)';
+  roundRect(ctx, x + 9, y + 5, w - 18, h * 0.3, 9);
+  ctx.fill();
+  text(ctx, str, x + w / 2 - (key ? 18 : 0), y + h / 2 + 8, { size: 22, color: primary ? PALETTE.pearl : INK, align: 'center', outline: primary ? INK : null, line: 5 });
   if (key) keycap(ctx, key, x + w - 34, y + h / 2, { size: 13 });
   return { id, x, y, w, h, disabled };
 }
 
-/** The game's logo: two lines of chunky outlined type. */
+/**
+ * The game's logo: "Octavia's" on a coral ribbon over chunky gold TIDEPOOL KITCHEN letters
+ * with a deep shadow, a pearl and a few bubbles.
+ */
 export function drawLogo(ctx, x, y, scale = 1) {
   ctx.save();
   ctx.translate(x, y);
   ctx.scale(scale, scale);
-  text(ctx, "Octavia's", 0, 0, { size: 46, color: PALETTE.gold, align: 'center', line: 9 });
-  text(ctx, 'TIDEPOOL KITCHEN', 0, 70, { size: 66, color: PALETTE.pearl, outline: PALETTE.coralDark, align: 'center', line: 12 });
-  text(ctx, 'TIDEPOOL KITCHEN', 0, 70, { size: 66, color: PALETTE.pearl, outline: INK, align: 'center', line: 5 });
+  const ribbon = new Path2D();
+  ribbon.moveTo(-150, -44);
+  ribbon.quadraticCurveTo(0, -62, 150, -44);
+  ribbon.lineTo(150, 4);
+  ribbon.quadraticCurveTo(0, -14, -150, 4);
+  ribbon.closePath();
+  for (const side of [-1, 1]) {
+    ctx.beginPath();
+    ctx.moveTo(side * 140, -36);
+    ctx.lineTo(side * 186, -34);
+    ctx.lineTo(side * 170, -14);
+    ctx.lineTo(side * 186, 8);
+    ctx.lineTo(side * 140, 10);
+    ctx.closePath();
+    ctx.fillStyle = PALETTE.coralDark;
+    ctx.fill();
+    ctx.lineWidth = 4;
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = INK;
+    ctx.stroke();
+  }
+  const coral = ctx.createLinearGradient(0, -60, 0, 4);
+  coral.addColorStop(0, '#ffa384');
+  coral.addColorStop(1, PALETTE.coralDark);
+  ctx.fillStyle = coral;
+  ctx.fill(ribbon);
+  ctx.lineWidth = 4;
+  ctx.stroke(ribbon);
+  text(ctx, "Octavia's", 0, -9, { size: 44, color: PALETTE.pearl, align: 'center', line: 8, weight: 900 });
+  ctx.font = `900 68px "Trebuchet MS", "Segoe UI", "Noto Sans", system-ui, sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'alphabetic';
+  ctx.lineJoin = 'round';
+  ctx.fillStyle = 'rgba(5,25,29,0.55)';
+  ctx.lineWidth = 16;
+  ctx.strokeStyle = 'rgba(5,25,29,0.55)';
+  ctx.strokeText('TIDEPOOL KITCHEN', 5, 80);
+  ctx.strokeStyle = INK;
+  ctx.lineWidth = 14;
+  ctx.strokeText('TIDEPOOL KITCHEN', 0, 72);
+  const gold = ctx.createLinearGradient(0, 22, 0, 74);
+  gold.addColorStop(0, '#fffbe0');
+  gold.addColorStop(0.45, '#ffd166');
+  gold.addColorStop(1, '#ff8f3a');
+  ctx.fillStyle = gold;
+  ctx.fillText('TIDEPOOL KITCHEN', 0, 72);
+  ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+  ctx.lineWidth = 1.5;
+  ctx.strokeText('TIDEPOOL KITCHEN', 0, 70);
+  blob(ctx, 0, -66, 9, '#fff6e6', INK, 3);
+  blob(ctx, -3, -69, 3, '#ffffff', null);
+  for (const [bx, by, r] of [[300, 10, 8], [318, -16, 5], [-306, 24, 6], [-322, 2, 4]]) blob(ctx, bx, by, r, 'rgba(214,250,255,0.25)', 'rgba(214,250,255,0.8)', 2);
   ctx.restore();
 }
 
 /** Title screen. */
 export function drawTitle(ctx, campaign, t, calm) {
   drawSea(ctx, t, calm);
-  ctx.fillStyle = 'rgba(255,246,230,0.12)';
-  ctx.beginPath();
-  ctx.ellipse(380, 560, 330, 200, 0, Math.PI, 0);
-  ctx.fill();
-  drawOctaviaPortrait(ctx, 380, 470, 1.55, t);
+  const spot = ctx.createRadialGradient(380, 380, 40, 380, 420, 380);
+  spot.addColorStop(0, 'rgba(255,236,200,0.32)');
+  spot.addColorStop(1, 'rgba(255,236,200,0)');
+  ctx.fillStyle = spot;
+  ctx.fillRect(0, 40, 760, 760);
+  drawClamStage(ctx, 378, 640);
+  drawOctaviaPortrait(ctx, 384, 410, 1.2, t, 'hero');
   drawLogo(ctx, 900, 150);
   text(ctx, 'An eight-armed octopus chef runs a bistro inside a giant clam', 900, 262, { size: 19, color: PALETTE.foam, align: 'center', line: 4 });
   const chips = ['8 recipes', '10 ingredients', '5 stations', '5 tide nights', 'sea-creature regulars'];
@@ -116,11 +215,13 @@ export function drawTitle(ctx, campaign, t, calm) {
     button(ctx, 'settings', 'Settings', 760, 528, 280, 56, { key: 'O' }),
   ];
   const stars = totalStars(campaign);
-  text(ctx, `Campaign: ${stars}/15 stars  -  purse ${campaign.purse} coins`, 900, 624, { size: 16, color: PALETTE.pearl, align: 'center', line: 4 });
+  const fresh = stars === 0 && campaign.purse === 0;
+  const status = fresh ? 'Five tide nights to master  -  15 stars to win' : `Campaign: ${stars}/15 stars  -  purse ${campaign.purse} coins`;
+  text(ctx, status, 900, 624, { size: 16, color: PALETTE.pearl, align: 'center', line: 4 });
   const regulars = ['puffy', 'shelby', 'twins', 'tortuga', 'mantis'];
   regulars.forEach((id, i) => {
     const x = 120 + i * 92;
-    drawCustomer(ctx, id, x, 742, 34, 0.9, t);
+    drawCustomer(ctx, id, x, 742, 34, 0.9);
     ctx.lineWidth = 3;
     ctx.strokeStyle = INK;
     ctx.beginPath();
@@ -128,56 +229,207 @@ export function drawTitle(ctx, campaign, t, calm) {
     ctx.stroke();
   });
   text(ctx, 'Tonight\u2019s regulars', 304, 694, { size: 16, color: PALETTE.gold, align: 'center', line: 4 });
-  text(ctx, 'Keyboard and mouse  -  works offline  -  progress saves', 900, 760, { size: 14, color: 'rgba(255,246,230,0.8)', align: 'center', line: 3 });
+  label(ctx, 'Keyboard and mouse  -  works offline  -  progress saves', 900, 764, 15, INK, 'center', 800);
   return buttons;
 }
 
-/** Positions of the five nights on the reef map. */
-const MAP_NODES = [[150, 560], [330, 430], [520, 560], [700, 420], [880, 520]];
+/** The open giant clam Octavia stands in on the title screen, centred on (x, y). */
+function drawClamStage(ctx, x, y) {
+  const shell = ctx.createLinearGradient(x - 260, y - 150, x + 260, y);
+  shell.addColorStop(0, '#fff1f6');
+  shell.addColorStop(0.5, '#e9c7f0');
+  shell.addColorStop(1, '#a98ad6');
+  ctx.beginPath();
+  ctx.moveTo(x - 250, y);
+  ctx.bezierCurveTo(x - 250, y - 210, x + 250, y - 210, x + 250, y);
+  ctx.closePath();
+  ctx.fillStyle = shell;
+  ctx.fill();
+  ctx.lineWidth = 4;
+  ctx.strokeStyle = INK;
+  ctx.stroke();
+  ctx.strokeStyle = 'rgba(59,42,77,0.22)';
+  ctx.lineWidth = 3;
+  for (let i = -5; i <= 5; i++) {
+    ctx.beginPath();
+    ctx.moveTo(x, y - 4);
+    ctx.lineTo(x + i * 44, y - 148 + Math.abs(i) * 18);
+    ctx.stroke();
+  }
+  oval(ctx, x, y + 6, 262, 34, '#9ad9c6', INK, 4);
+  oval(ctx, x, y, 230, 20, '#c6efe2', null);
+  blob(ctx, x + 150, y - 6, 13, '#fff6e6', INK, 3);
+  blob(ctx, x + 146, y - 10, 4, '#ffffff', null);
+}
 
-/** The reef map: the campaign path, stars per night, details and the shop door. */
+/** Positions of the five nights on the reef map. */
+const MAP_NODES = [[150, 500], [330, 430], [520, 560], [700, 420], [880, 520]];
+
+/** Each night's mood as light, mid and deep tints: turquoise, sunset coral, indigo, storm teal, royal gold. */
+const NIGHT_MOODS = [
+  ['#c9fff8', '#3fd0c9', '#13807f'],
+  ['#ffe0cc', '#ff8a65', '#c2453a'],
+  ['#e0dcff', '#7b6cf0', '#3a2d9a'],
+  ['#cdeff0', '#2f9aa6', '#155560'],
+  ['#fff3c4', '#f5c542', '#b07f12'],
+];
+const LOCKED_MOOD = ['#a9b6b9', '#6b7f84', '#465a5f'];
+
+/** Where Octavia swims beside each night's shell, as an offset that keeps clear of the other shells. */
+const OCTAVIA_SPOTS = [[40, -130], [-128, -50], [0, -128], [112, -52], [0, -130]];
+
+/** The ocean current between the nights: a soft glowing band under a dotted line that flows along. */
+function drawCurrent(ctx, t, calm) {
+  const path = new Path2D();
+  path.moveTo(...MAP_NODES[0]);
+  for (let i = 1; i < MAP_NODES.length; i++) {
+    const [ax, ay] = MAP_NODES[i - 1];
+    const [bx, by] = MAP_NODES[i];
+    const bend = i % 2 ? 46 : -46;
+    const len = Math.hypot(bx - ax, by - ay);
+    path.quadraticCurveTo((ax + bx) / 2 - ((by - ay) / len) * bend, (ay + by) / 2 + ((bx - ax) / len) * bend, bx, by);
+  }
+  ctx.lineCap = 'round';
+  ctx.lineWidth = 24;
+  ctx.strokeStyle = 'rgba(127,240,255,0.1)';
+  ctx.stroke(path);
+  ctx.setLineDash([1, 16]);
+  ctx.lineDashOffset = calm ? 0 : -t * 16;
+  ctx.lineWidth = 8;
+  ctx.strokeStyle = 'rgba(255,246,230,0.8)';
+  ctx.stroke(path);
+  ctx.setLineDash([]);
+  ctx.lineDashOffset = 0;
+  ctx.lineCap = 'butt';
+}
+
+/** A night's scallop shell on the map, glowing in its mood (brighter and gold-rimmed when selected, dim when locked). */
+function drawTideShell(ctx, x, y, mood, open, sel, t, calm) {
+  const [light, mid, deep] = open ? mood : LOCKED_MOOD;
+  if (open) {
+    const pulse = calm ? 0.5 : 0.5 + 0.5 * Math.sin(t * 3);
+    const r = sel ? 84 + pulse * 8 : 66;
+    const glow = ctx.createRadialGradient(x, y - 8, 10, x, y - 8, r);
+    glow.addColorStop(0, `${mid}${sel ? 'cc' : '77'}`);
+    glow.addColorStop(1, `${mid}00`);
+    ctx.fillStyle = glow;
+    ctx.fillRect(x - r, y - 8 - r, r * 2, r * 2);
+  }
+  const cx = x;
+  const cy = y + 14;
+  const R = 54;
+  const angle = (j) => Math.PI + 0.2 + (j / 7) * (Math.PI - 0.4);
+  const shell = new Path2D();
+  shell.moveTo(x, y + 30);
+  shell.lineTo(cx + Math.cos(angle(0)) * R, cy + Math.sin(angle(0)) * R);
+  for (let j = 0; j < 7; j++) {
+    const m = angle(j + 0.5);
+    shell.quadraticCurveTo(cx + Math.cos(m) * R * 1.14, cy + Math.sin(m) * R * 1.14, cx + Math.cos(angle(j + 1)) * R, cy + Math.sin(angle(j + 1)) * R);
+  }
+  shell.closePath();
+  const fill = ctx.createRadialGradient(x - 14, y - 24, 4, x, y + 6, 66);
+  fill.addColorStop(0, light);
+  fill.addColorStop(0.55, mid);
+  fill.addColorStop(1, deep);
+  ctx.globalAlpha = open ? 1 : 0.8;
+  if (sel) {
+    ctx.lineWidth = 10;
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = PALETTE.gold;
+    ctx.stroke(shell);
+  }
+  ctx.fillStyle = fill;
+  ctx.fill(shell);
+  ctx.strokeStyle = 'rgba(59,42,77,0.3)';
+  ctx.lineWidth = 2;
+  for (let j = 1; j < 7; j++) {
+    ctx.beginPath();
+    ctx.moveTo(x, y + 26);
+    ctx.lineTo(cx + Math.cos(angle(j)) * R * 0.94, cy + Math.sin(angle(j)) * R * 0.94);
+    ctx.stroke();
+  }
+  ctx.fillStyle = 'rgba(255,255,255,0.4)';
+  ctx.beginPath();
+  ctx.ellipse(x - 20, y - 18, 12, 6, -0.6, 0, TAU);
+  ctx.fill();
+  ctx.lineWidth = 3.5;
+  ctx.lineJoin = 'round';
+  ctx.strokeStyle = INK;
+  ctx.stroke(shell);
+  ctx.beginPath();
+  ctx.moveTo(x - 16, y + 30);
+  ctx.lineTo(x + 16, y + 30);
+  ctx.lineTo(x + 9, y + 20);
+  ctx.lineTo(x - 9, y + 20);
+  ctx.closePath();
+  ctx.fillStyle = deep;
+  ctx.fill();
+  ctx.lineWidth = 2.5;
+  ctx.stroke();
+  ctx.globalAlpha = 1;
+}
+
+/** A small brass padlock for a night that is not open yet. */
+function drawPadlock(ctx, x, y) {
+  ctx.lineCap = 'round';
+  for (const [lw, col] of [[7, INK], [3.5, '#e6e9ee']]) {
+    ctx.lineWidth = lw;
+    ctx.strokeStyle = col;
+    ctx.beginPath();
+    ctx.arc(x, y - 2, 9, Math.PI, TAU);
+    ctx.lineTo(x + 9, y + 4);
+    ctx.moveTo(x - 9, y + 4);
+    ctx.lineTo(x - 9, y - 2);
+    ctx.stroke();
+  }
+  ctx.lineCap = 'butt';
+  const brass = ctx.createLinearGradient(0, y, 0, y + 24);
+  brass.addColorStop(0, '#ffe08a');
+  brass.addColorStop(1, '#b8862a');
+  ctx.fillStyle = brass;
+  roundRect(ctx, x - 15, y + 2, 30, 24, 6);
+  ctx.fill();
+  ctx.lineWidth = 2.5;
+  ctx.strokeStyle = INK;
+  ctx.stroke();
+  blob(ctx, x, y + 11, 3.5, INK, null);
+  ctx.fillStyle = INK;
+  ctx.fillRect(x - 1.5, y + 12, 3, 8);
+}
+
+/**
+ * The reef map: mood-tinted tide shells along a flowing current, Octavia swimming beside the
+ * selected night, its details and the shop door.
+ */
 export function drawMap(ctx, campaign, selected, t, calm) {
-  drawSea(ctx, t, calm);
+  drawSea(ctx, t, calm, [232, 470]);
   drawLogo(ctx, 470, 72, 0.62);
   text(ctx, 'An eight-armed octopus chef runs a reef bistro inside a giant clam', 470, 160, { size: 17, color: PALETTE.pearl, align: 'center', line: 4 });
   text(ctx, 'REEF MAP', 470, 204, { size: 24, color: PALETTE.foam, align: 'center', line: 5 });
-  ctx.setLineDash([4, 14]);
-  ctx.lineCap = 'round';
-  ctx.lineWidth = 8;
-  ctx.strokeStyle = 'rgba(255,246,230,0.7)';
-  ctx.beginPath();
-  MAP_NODES.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
-  ctx.stroke();
-  ctx.setLineDash([]);
-  ctx.lineCap = 'butt';
-  const [mx, my] = MAP_NODES[selected];
-  drawOctaviaPortrait(ctx, mx, my - 132, 0.34, t);
+  drawCurrent(ctx, t, calm);
   const buttons = [];
   MAP_NODES.forEach(([x, y], i) => {
     const open = i < campaign.unlocked;
-    const sel = i === selected;
-    if (sel) {
-      ctx.save();
-      ctx.shadowColor = PALETTE.gold;
-      ctx.shadowBlur = 24;
-      blob(ctx, x, y, 58, 'rgba(255,209,102,0.35)', null);
-      ctx.restore();
-    }
-    ctx.beginPath();
-    ctx.moveTo(x - 50, y + 10);
-    ctx.bezierCurveTo(x - 54, y - 58, x + 54, y - 58, x + 50, y + 10);
-    ctx.quadraticCurveTo(x, y + 30, x - 50, y + 10);
-    ctx.fillStyle = open ? (sel ? '#ffe3a3' : '#fff1d6') : '#6b7f84';
-    ctx.fill();
-    ctx.lineWidth = 3.5;
-    ctx.strokeStyle = INK;
-    ctx.stroke();
-    text(ctx, String(i + 1), x, y - 2, { size: 34, color: open ? PALETTE.coralDark : '#3b4a4f', align: 'center', outline: null });
-    text(ctx, NIGHTS[i].name, x, y + 50, { size: 17, color: PALETTE.pearl, align: 'center', line: 4 });
+    drawTideShell(ctx, x, y, NIGHT_MOODS[i], open, i === selected, t, calm);
+    if (open) text(ctx, String(i + 1), x, y + 2, { size: 32, color: PALETTE.pearl, align: 'center', line: 7 });
+    else drawPadlock(ctx, x, y - 8);
+    text(ctx, NIGHTS[i].name, x, y + 50, { size: 17, color: open ? PALETTE.pearl : '#a9b9bc', align: 'center', line: 4 });
     for (let s = 0; s < 3; s++) star(ctx, x - 26 + s * 26, y + 74, 11, s < campaign.stars[i] ? PALETTE.gold : 'rgba(20,30,40,0.5)');
     if (!open) text(ctx, 'locked', x, y + 100, { size: 13, color: '#c7d3d6', align: 'center', line: 3 });
     buttons.push({ id: `night${i}`, x: x - 56, y: y - 56, w: 112, h: 140 });
   });
+  const [dx, dy] = OCTAVIA_SPOTS[selected];
+  const ox = MAP_NODES[selected][0] + dx;
+  const oy = MAP_NODES[selected][1] + dy + (calm ? 0 : Math.sin(t * 2.2) * 7);
+  for (let k = 0; k < 3; k++) {
+    const rise = calm ? k * 14 : (t * 26 + k * 17) % 50;
+    blob(ctx, ox - 18 + Math.sin(t * 3 + k) * 4, oy - 52 - rise, 3 + k, 'rgba(214,250,255,0.25)', 'rgba(214,250,255,0.8)', 1.5);
+  }
+  ctx.save();
+  ctx.translate(ox, oy);
+  ctx.rotate((dx < 0 ? -1 : 1) * (0.12 + (calm ? 0 : Math.sin(t * 2.2 + 1) * 0.05)));
+  drawOctaviaPortrait(ctx, 0, 0, 0.3, t);
+  ctx.restore();
   const night = NIGHTS[selected];
   const px = 980;
   panel(ctx, px, 40, 284, 620, { fill: 'rgba(8,42,48,0.92)', stroke: '#c99a4b', r: 18, line: 4 });
@@ -196,7 +448,7 @@ export function drawMap(ctx, campaign, selected, t, calm) {
   const regs = Object.keys(night.customers).concat(night.critic.length ? ['mantis'] : []);
   regs.forEach((id, i) => {
     const x = px + 42 + i * 52;
-    drawCustomer(ctx, id, x, ry + 32, 22, 0.9, t);
+    drawCustomer(ctx, id, x, ry + 32, 22, 0.9);
     ctx.lineWidth = 2.5;
     ctx.strokeStyle = INK;
     ctx.beginPath();
@@ -280,7 +532,7 @@ export function drawUpgradeIcon(ctx, id, x, y, r) {
   }
 }
 
-/** The Tide Shop panel: every upgrade with its cost; returns the buy buttons. */
+/** The Tide Shop panel: every upgrade with its cost and buy key (1-5); returns the buy buttons. */
 export function drawShop(ctx, campaign, x, y, w) {
   panel(ctx, x, y, w, 470, { fill: 'rgba(8,42,48,0.94)', stroke: '#c99a4b', r: 18, line: 4 });
   text(ctx, 'TIDE SHOP', x + w / 2, y + 40, { size: 26, color: PALETTE.gold, align: 'center', line: 5 });
@@ -292,64 +544,193 @@ export function drawShop(ctx, campaign, x, y, w) {
     const afford = campaign.purse >= u.cost;
     panel(ctx, x + 14, ry, w - 28, 68, { fill: owned ? '#1d6f5a' : '#12474f', stroke: INK, r: 12, line: 2.5, shadow: false });
     drawUpgradeIcon(ctx, u.id, x + 48, ry + 34, 22);
-    text(ctx, u.name, x + 80, ry + 28, { size: 17, color: PALETTE.pearl, line: 3 });
-    label(ctx, u.text, x + 80, ry + 50, 12, PALETTE.foam, 'left', 700);
+    text(ctx, u.name, x + 80, ry + 25, { size: 17, color: PALETTE.pearl, line: 3, maxWidth: w - 214 });
+    paragraph(ctx, u.text, x + 80, ry + 43, w - 214, 14, 12, PALETTE.foam, 700);
     const bx = x + w - 120;
     if (owned) {
       text(ctx, 'OWNED', bx + 50, ry + 41, { size: 16, color: PALETTE.green, align: 'center', line: 3 });
     } else {
       panel(ctx, bx, ry + 16, 96, 36, { fill: afford ? PALETTE.gold : '#6b7f84', stroke: INK, r: 10, line: 2.5, shadow: false });
-      label(ctx, `${u.cost} c`, bx + 48, ry + 40, 16, INK, 'center', 900);
+      keycap(ctx, String(i + 1), bx + 18, ry + 34, { size: 12 });
+      label(ctx, `${u.cost} c`, bx + 60, ry + 40, 16, INK, 'center', 900);
+      if (!afford) label(ctx, `need ${u.cost - campaign.purse} c`, bx + 48, ry + 65, 12, '#ffb3a6', 'center', 800);
       buttons.push({ id: `buy:${u.id}`, x: bx, y: ry + 16, w: 96, h: 36, disabled: !afford });
     }
   });
   return buttons;
 }
 
-/** Results of a night: stars, coins, stats, the critic and the Tide Shop. */
+/** Reef Gazette headline and subhead for each star count. */
+const HEADLINES = [
+  ['KITCHEN IN HOT WATER', 'Hungry diners swim off as the tide turns'],
+  ['A DECENT CATCH', 'Octavia keeps the clam bistro afloat'],
+  ['OCTAVIA MAKES WAVES', 'Regulars rave about the eight-armed chef'],
+  ['EIGHT ARMS OF GENIUS!', 'The reef crowns its finest kitchen'],
+];
+
+const SERIF = 'Georgia, "Times New Roman", "DejaVu Serif", serif';
+
+/** Newsprint type in the Gazette's serif. */
+function serif(ctx, str, x, y, size, { weight = 700, color = INK, align = 'center', italic = false, maxWidth } = {}) {
+  ctx.font = `${italic ? 'italic ' : ''}${weight} ${size}px ${SERIF}`;
+  ctx.textAlign = align;
+  ctx.textBaseline = 'alphabetic';
+  ctx.fillStyle = color;
+  ctx.fillText(str, x, y, maxWidth);
+}
+
+/** A printed rule across the Gazette page. */
+function rule(ctx, x0, x1, y, width = 1.5) {
+  ctx.fillStyle = INK;
+  ctx.fillRect(x0, y, x1 - x0, width);
+}
+
+/**
+ * Results of a night as a Reef Gazette review: masthead, a headline by stars earned, a photo
+ * of Octavia taking a bow, the verdict in stars and coins, the night's numbers and a diner's
+ * quote, with the Tide Shop beside it.
+ */
 export function drawResults(ctx, campaign, summary, t, calm) {
   drawSea(ctx, t, calm);
   const night = NIGHTS[summary.nightIndex];
-  panel(ctx, 30, 30, 700, 740, { fill: 'rgba(8,42,48,0.94)', stroke: '#c99a4b', r: 22, line: 5 });
-  text(ctx, `NIGHT ${summary.nightIndex + 1} COMPLETE`, 380, 84, { size: 34, color: PALETTE.gold, align: 'center', line: 7 });
-  text(ctx, night.name, 380, 118, { size: 22, color: PALETTE.foam, align: 'center', line: 4 });
+  ctx.save();
+  ctx.translate(378, 350);
+  ctx.rotate(-0.012);
+  ctx.translate(-378, -350);
+  ctx.fillStyle = 'rgba(3,18,22,0.45)';
+  roundRect(ctx, 44, 40, 680, 636, 8);
+  ctx.fill();
+  const paper = ctx.createLinearGradient(0, 32, 0, 668);
+  paper.addColorStop(0, '#fcf6e8');
+  paper.addColorStop(1, '#eadcbc');
+  roundRect(ctx, 38, 32, 680, 636, 8);
+  ctx.fillStyle = paper;
+  ctx.fill();
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = INK;
+  ctx.stroke();
+  serif(ctx, 'THE REEF GAZETTE', 378, 88, 44, { weight: 900 });
+  rule(ctx, 62, 694, 100, 3.5);
+  rule(ctx, 62, 694, 107);
+  serif(ctx, `LATE TIDE EDITION  \u2022  NIGHT ${summary.nightIndex + 1}: ${night.name.toUpperCase()}  \u2022  ONE PEARL`, 378, 126, 12, { weight: 700, color: '#5a4470' });
+  rule(ctx, 62, 694, 135);
+  const [headline, subhead] = HEADLINES[summary.stars];
+  serif(ctx, headline, 378, 182, 40, { weight: 900, maxWidth: 630 });
+  serif(ctx, subhead, 378, 208, 17, { italic: true, color: '#5a4470' });
+  rule(ctx, 62, 694, 222);
+  const photo = { x: 62, y: 236, w: 288, h: 206 };
+  ctx.save();
+  roundRect(ctx, photo.x, photo.y, photo.w, photo.h, 4);
+  const reef = ctx.createLinearGradient(0, photo.y, 0, photo.y + photo.h);
+  reef.addColorStop(0, '#2b8fa0');
+  reef.addColorStop(1, '#0e3b43');
+  ctx.fillStyle = reef;
+  ctx.fill();
+  ctx.clip();
+  const glowSpot = ctx.createRadialGradient(206, 300, 10, 206, 320, 170);
+  glowSpot.addColorStop(0, 'rgba(255,236,200,0.45)');
+  glowSpot.addColorStop(1, 'rgba(255,236,200,0)');
+  ctx.fillStyle = glowSpot;
+  ctx.fillRect(photo.x, photo.y, photo.w, photo.h);
+  oval(ctx, 206, 430, 150, 30, '#d9b57a', null);
+  drawOctaviaPortrait(ctx, 206, 352, 0.5, t, 'bow');
+  ctx.restore();
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = INK;
+  roundRect(ctx, photo.x, photo.y, photo.w, photo.h, 4);
+  ctx.stroke();
+  serif(ctx, 'Chef Octavia takes a bow after service.', 206, 462, 13, { italic: true, color: '#5a4470' });
+  rule(ctx, 361, 362.5, 236, 230);
+  serif(ctx, 'OUR VERDICT', 533, 256, 14, { weight: 900, color: '#5a4470' });
   for (let s = 0; s < 3; s++) {
     const appear = Math.min(1, Math.max(0, t * 2 - s * 0.4));
     const sc = calm ? 1 : 0.6 + 0.4 * appear;
-    star(ctx, 270 + s * 110, 196 - (s === 1 ? 14 : 0), 44 * sc, s < summary.stars ? PALETTE.gold : 'rgba(20,30,40,0.55)', INK, 4);
+    star(ctx, 457 + s * 76, 302 - (s === 1 ? 10 : 0), 32 * sc, s < summary.stars ? PALETTE.gold : 'rgba(59,42,77,0.2)', INK, 3.5);
   }
-  text(ctx, `${summary.coins} coins`, 380, 290, { size: 40, color: PALETTE.pearl, align: 'center', line: 7 });
-  label(ctx, `targets ${night.stars.join(' / ')}`, 380, 316, 15, PALETTE.foam, 'center', 800);
+  serif(ctx, `${summary.coins} coins`, 533, 374, 38, { weight: 900 });
+  serif(ctx, `targets ${night.stars.join(' / ')}`, 533, 398, 14, { italic: true, color: '#5a4470' });
+  serif(ctx, `${summary.inkBursts ?? 0} Ink Burst${summary.inkBursts === 1 ? '' : 's'}  \u2022  best streak ${summary.bestStreak}`, 533, 428, 14, { color: '#7a3fbf' });
+  rule(ctx, 62, 694, 478);
+  serif(ctx, 'BY THE NUMBERS', 378, 500, 13, { weight: 900, color: '#5a4470' });
   const stats = [
     ['Plates served', summary.served], ['Customers missed', summary.missed],
-    ['Perfect cooks', summary.perfectCooks], ['Best Ink Streak', summary.bestStreak],
-    ['Tips earned', `${summary.tips} c`], ['Burnt food', summary.burnt],
-    ['Twin bonuses', summary.twins], ['Orders changed', summary.ordersChanged],
+    ['Perfect cooks', summary.perfectCooks], ['Tips earned', `${summary.tips} c`],
+    ['Burnt food', summary.burnt], ['Twin bonuses', summary.twins],
+    ['Orders changed', summary.ordersChanged], ['Ink Bursts', summary.inkBursts ?? 0],
   ];
   stats.forEach(([name, value], i) => {
-    const col = i % 2;
-    const row = Math.floor(i / 2);
-    const x = 70 + col * 320;
-    const y = 360 + row * 60;
-    panel(ctx, x, y, 300, 48, { fill: '#12474f', stroke: INK, r: 12, line: 2.5, shadow: false });
-    label(ctx, name, x + 16, y + 30, 17, PALETTE.foam, 'left', 800);
-    text(ctx, String(value), x + 284, y + 33, { size: 22, color: PALETTE.pearl, align: 'right', line: 4 });
+    const x = 62 + (i % 2) * 330;
+    const y = 524 + Math.floor(i / 2) * 22;
+    serif(ctx, name, x, y, 15, { align: 'left', weight: 700 });
+    const from = x + ctx.measureText(name).width + 8;
+    serif(ctx, String(value), x + 302, y, 16, { align: 'right', weight: 900 });
+    const to = x + 302 - ctx.measureText(String(value)).width - 8;
+    ctx.fillStyle = 'rgba(59,42,77,0.4)';
+    for (let d = from; d < to; d += 6) ctx.fillRect(d, y - 3, 2, 2);
   });
-  if (summary.critic !== null) {
-    panel(ctx, 70, 604, 620, 56, { fill: '#3b2a4d', stroke: PALETTE.gold, r: 14, line: 3, shadow: false });
-    drawCustomer(ctx, 'mantis', 108, 632, 22, 0.9, t);
-    text(ctx, 'Madame Mantis reviews:', 142, 640, { size: 18, color: PALETTE.gold, line: 4 });
-    starRow(ctx, 560, 632, 12, summary.critic);
-  } else {
-    drawOctaviaPortrait(ctx, 380, 626, 0.36, t);
-  }
+  const voice = summary.critic !== null ? 'mantis' : ['puffy', 'shelby', 'twins', 'tortuga'][summary.stars];
+  const said = CUSTOMERS[voice].lines?.[summary.stars > 0 ? 'happy' : 'angry']?.[summary.nightIndex % 3] ?? 'What a night!';
+  rule(ctx, 62, 694, 610);
+  drawCustomer(ctx, voice, 88, 638, 20, summary.stars > 0 ? 1 : 0.2);
+  serif(ctx, `\u201c${said}\u201d`, 118, 645, 19, { align: 'left', italic: true, weight: 700, maxWidth: 330 });
+  serif(ctx, `- ${CUSTOMERS[voice].name}`, 694, 645, 14, { align: 'right', color: '#5a4470' });
+  if (summary.critic !== null) starRow(ctx, 600, 624, 7, summary.critic);
+  ctx.restore();
   const buttons = [];
-  const nextOpen = summary.nightIndex + 1 < Math.min(NIGHTS.length, campaign.unlocked);
-  if (summary.nightIndex + 1 < NIGHTS.length) buttons.push(button(ctx, 'next', 'Next night', 60, 690, 230, 60, { key: 'Enter', primary: nextOpen, disabled: !nextOpen }));
-  buttons.push(button(ctx, 'retry', 'Replay', 302, 690, 190, 60, { key: 'R' }));
-  buttons.push(button(ctx, 'map', 'Reef map', 504, 690, 200, 60, { key: 'M' }));
+  if (summary.campaignComplete) {
+    drawCompleteSeal(ctx, 648, 92, t, calm);
+    buttons.push(button(ctx, 'map', 'Reef map', 60, 690, 230, 60, { key: 'Enter', primary: true }));
+    buttons.push(button(ctx, 'retry', 'Replay', 302, 690, 190, 60, { key: 'R' }));
+  } else {
+    const nextOpen = summary.nightIndex + 1 < Math.min(NIGHTS.length, campaign.unlocked);
+    if (summary.nightIndex + 1 < NIGHTS.length) buttons.push(button(ctx, 'next', 'Next night', 60, 690, 230, 60, { key: 'Enter', primary: nextOpen, disabled: !nextOpen }));
+    buttons.push(button(ctx, 'retry', 'Replay', 302, 690, 190, 60, { key: 'R' }));
+    buttons.push(button(ctx, 'map', 'Reef map', 504, 690, 200, 60, { key: 'Esc' }));
+  }
   drawShopHeader(ctx, t);
   return buttons.concat(drawShop(ctx, campaign, 760, 160, 490));
+}
+
+/** A gold rosette stamped on the Gazette after the last night: CAMPAIGN COMPLETE under a star. */
+function drawCompleteSeal(ctx, x, y, t, calm) {
+  const pop = calm ? 1 : Math.min(1, 0.4 + t * 1.5);
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(0.16);
+  ctx.scale(pop, pop);
+  const edge = new Path2D();
+  for (let k = 0; k <= 48; k++) {
+    const a = (k / 48) * TAU;
+    const r = k % 2 ? 58 : 64;
+    edge.lineTo(Math.cos(a) * r, Math.sin(a) * r);
+  }
+  edge.closePath();
+  ctx.fillStyle = 'rgba(3,18,22,0.35)';
+  ctx.translate(4, 6);
+  ctx.fill(edge);
+  ctx.translate(-4, -6);
+  const gold = ctx.createLinearGradient(-60, -60, 60, 60);
+  gold.addColorStop(0, '#fff0b8');
+  gold.addColorStop(0.5, PALETTE.gold);
+  gold.addColorStop(1, '#c98a1c');
+  ctx.fillStyle = gold;
+  ctx.fill(edge);
+  ctx.lineWidth = 3;
+  ctx.lineJoin = 'round';
+  ctx.strokeStyle = INK;
+  ctx.stroke(edge);
+  const red = ctx.createRadialGradient(-12, -16, 4, 0, 0, 50);
+  red.addColorStop(0, '#ff8a6a');
+  red.addColorStop(1, '#b8322a');
+  blob(ctx, 0, 0, 47, red, INK, 3);
+  ctx.setLineDash([3, 4]);
+  blob(ctx, 0, 0, 41, 'rgba(0,0,0,0)', 'rgba(255,240,184,0.9)', 2);
+  ctx.setLineDash([]);
+  star(ctx, 0, -25, 10, PALETTE.gold, INK, 2);
+  text(ctx, 'CAMPAIGN', 0, 2, { size: 14, color: PALETTE.pearl, align: 'center', line: 4, weight: 900, maxWidth: 74 });
+  text(ctx, 'COMPLETE', 0, 20, { size: 14, color: PALETTE.pearl, align: 'center', line: 4, weight: 900, maxWidth: 74 });
+  for (const dx of [-14, 0, 14]) star(ctx, dx, 33, 4.5, PALETTE.gold, INK, 1);
+  ctx.restore();
 }
 
 /** Octavia's note above the shop. */
@@ -381,9 +762,10 @@ export function drawHelp(ctx, t) {
     ['S', 'Serve the glowing plate in the Current Window to the customer who ordered it.'],
     ['Tab', 'Pick which ticket the plate is for. Click tickets, bins and stations too.'],
     ['Bksp', 'Bin the newest held item, burnt food, or the plate.'],
+    ['I', 'Ink Burst: fills with perfect cooks; freezes patience and speeds your arms for 6 s.'],
   ];
   rows.forEach(([key, what], i) => {
-    const y = 156 + i * 46;
+    const y = 150 + i * 42;
     keycap(ctx, key, 196, y, { size: 16, fill: PALETTE.gold });
     label(ctx, what, 256, y + 6, 18, INK, 'left', 700);
   });
@@ -405,7 +787,7 @@ export function drawPause(ctx) {
     button(ctx, 'resume', 'Resume', 490, 300, 300, 60, { key: 'P', primary: true }),
     button(ctx, 'help', 'How to play', 490, 374, 300, 56, { key: 'H' }),
     button(ctx, 'settings', 'Settings', 490, 444, 300, 56, { key: 'O' }),
-    button(ctx, 'quit', 'Quit to map', 490, 514, 300, 56, { key: 'Q' }),
+    button(ctx, 'quit', 'Quit to map', 490, 514, 300, 56, { key: 'X' }),
   ];
 }
 
@@ -416,7 +798,7 @@ export function drawSettings(ctx, settings) {
   text(ctx, 'SETTINGS', 640, 272, { size: 36, color: PALETTE.gold, align: 'center', line: 6 });
   return [
     button(ctx, 'toggleSound', `Sound: ${settings.sound ? 'on' : 'off'}`, 470, 310, 340, 60, { key: 'M' }),
-    button(ctx, 'toggleMotion', `Reduced motion: ${settings.reducedMotion ? 'on' : 'off'}`, 470, 384, 340, 60, {}),
+    button(ctx, 'toggleMotion', `Reduced motion: ${settings.reducedMotion ? 'on' : 'off'}`, 470, 384, 340, 60, { key: 'R' }),
     button(ctx, 'closeSettings', 'Back', 470, 480, 340, 60, { key: 'Esc', primary: true }),
   ];
 }

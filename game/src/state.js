@@ -8,19 +8,21 @@ import { LAYOUT, TUNING } from './config.js';
 import { INGREDIENT, INGREDIENTS } from './data/ingredients.js';
 import { NIGHTS } from './data/nights.js';
 import { createRng } from './rng.js';
-import { createArms, freeArmNear, holdItem, sendArm, updateArms } from './arms.js';
+import { binPoint, createArms, freeArmNear, holdItem, sendArm, updateArms } from './arms.js';
 import { clearBurnt, createStations, updateStations, useStation } from './stations.js';
 import { selectTicket, servePass, spawnCritic, spawnRegular, trash, updatePass, updateTickets, usePlate } from './orders.js';
+import { fireInkBurst, updateInk } from './ink.js';
+import { updateCoach } from './coach.js';
 import { starsFor } from './scoring.js';
 
-/** Centre of an ingredient bin on the counter. */
-export function binPoint(index) {
-  const b = LAYOUT.bins;
-  return { x: b.x + index * (b.w + b.gap) + b.w / 2, y: b.y + 40 };
-}
+/** The Current Board shows this many tickets, so no rush or critic ever brings more. */
+const BOARD_MAX = LAYOUT.ticket.max;
 
-/** A fresh night: empty stations, eight idle arms and the night's ticket schedule. */
-export function createNight({ nightIndex, upgrades = {}, seed = 1 }) {
+/**
+ * A fresh night: empty stations, eight idle arms, the ticket schedule, and `emit` to log events
+ * with their moment. `coach: true` turns on the first-shift coach (`state.coach` hints).
+ */
+export function createNight({ nightIndex, upgrades = {}, seed = 1, coach = false }) {
   const cfg = NIGHTS[nightIndex];
   const state = {
     nightIndex, cfg, seed, rng: createRng(seed * 7919 + nightIndex * 104729),
@@ -33,6 +35,12 @@ export function createNight({ nightIndex, upgrades = {}, seed = 1 }) {
     arms: createArms(), stations: createStations(upgrades),
     plate: { recipeId: null, parts: [] }, pass: [], twinsServed: {},
     events: [], toasts: [],
+    ink: { meter: 0, active: false, endsAt: 0, uses: 0 },
+    moments: {}, speech: [], coach: null, coaching: coach,
+  };
+  state.emit = (event) => {
+    state.events.push(event);
+    state.moments[event.type] = state.time;
   };
   state.toast = (text, color = '#fff6e6') => {
     state.toasts.push({ text, color, at: state.time });
@@ -50,6 +58,7 @@ export function inRush(state) {
 export function stepNight(state, dt) {
   if (state.over) return;
   state.time += dt;
+  updateInk(state);
   updateArms(state, dt);
   updateStations(state, dt);
   updateTickets(state, dt);
@@ -57,38 +66,39 @@ export function stepNight(state, dt) {
   updateRush(state);
   updateSpawns(state, dt);
   state.toasts = state.toasts.filter((t) => state.time - t.at < 2.6);
+  if (state.coaching) updateCoach(state);
   if (state.time >= state.cfg.duration) endNight(state);
 }
 
-/** Spring Tide: a warning banner, then tickets arrive much faster for a while. */
+/** Spring Tide: a warning banner, then for a while tickets arrive much faster, up to a full board. */
 function updateRush(state) {
   const r = state.rush;
   const next = state.cfg.rushes[r.index];
   if (!r.active && next !== undefined) {
     if (r.warnAt === null && state.time >= next - TUNING.rushWarning) {
       r.warnAt = state.time;
-      state.events.push({ type: 'rushWarn' });
+      state.emit({ type: 'rushWarn' });
     }
     if (state.time >= next) {
       r.active = true;
       r.endsAt = next + TUNING.rushDuration;
-      state.maxTickets = state.cfg.maxTickets + 2;
+      state.maxTickets = Math.min(BOARD_MAX, state.cfg.maxTickets + 2);
       state.spawnTimer = Math.min(state.spawnTimer, 0.8);
-      state.events.push({ type: 'rushStart' });
+      state.emit({ type: 'rushStart' });
     }
   } else if (r.active && state.time >= r.endsAt) {
     r.active = false;
     r.warnAt = null;
     r.index++;
     state.maxTickets = state.cfg.maxTickets;
-    state.events.push({ type: 'rushEnd' });
+    state.emit({ type: 'rushEnd' });
   }
 }
 
-/** Regular tickets on the night's pace, plus Madame Mantis at her booked times. */
+/** Regular tickets on the night's pace, plus Madame Mantis at her booked times (or the first free board spot after). */
 function updateSpawns(state, dt) {
   const visit = state.cfg.critic[state.criticIndex];
-  if (visit !== undefined && state.time >= visit) {
+  if (visit !== undefined && state.time >= visit && state.tickets.length < BOARD_MAX) {
     spawnCritic(state);
     state.criticIndex++;
   }
@@ -114,7 +124,7 @@ export function grabIngredient(state, ingId) {
   const ing = INGREDIENT[ingId];
   holdItem(state, arm, { ing: ingId, prep: ing.preps.includes('raw') ? 'raw' : null, quality: 'good' });
   sendArm(state, arm, at);
-  state.events.push({ type: 'grab', ...at, ing: ingId });
+  state.emit({ type: 'grab', ...at, ing: ingId });
   return { ok: true, arm: arm.id };
 }
 
@@ -130,10 +140,11 @@ export function dispatch(state, action) {
     case 'select': res = selectTicket(state, action.id); break;
     case 'cycle': res = selectTicket(state, 'next'); break;
     case 'trash': res = trash(state, clearBurnt); break;
+    case 'ink': res = fireInkBurst(state); break;
     default: res = { ok: false, reason: 'Unknown action' };
   }
   if (!res.ok) {
-    state.events.push({ type: res.noArm ? 'noArm' : 'invalid' });
+    state.emit({ type: res.noArm ? 'noArm' : 'invalid' });
     state.toast(res.reason, res.noArm ? '#ff7a59' : '#fff6e6');
   }
   return res;
@@ -142,15 +153,19 @@ export function dispatch(state, action) {
 /** Closes the bistro for the night. */
 function endNight(state) {
   state.over = true;
-  state.events.push({ type: 'nightOver' });
+  state.emit({ type: 'nightOver' });
 }
 
-/** The night's results: coins, stars, stats and the critic's average. */
+/**
+ * The night's results: coins, stars, stats, Ink Bursts fired, the critic's average, and
+ * `campaignComplete` when the last night earned at least one star.
+ */
 export function nightSummary(state) {
   const reviews = state.critic.reviews;
   const critic = state.cfg.critic.length ? (reviews.length ? reviews.reduce((a, b) => a + b, 0) / reviews.length : 1) : null;
+  const stars = starsFor(state.coins, state.cfg.stars, critic);
   return {
-    nightIndex: state.nightIndex, coins: state.coins, stars: starsFor(state.coins, state.cfg.stars, critic),
-    bestStreak: state.bestStreak, critic, ...state.stats,
+    nightIndex: state.nightIndex, coins: state.coins, stars, bestStreak: state.bestStreak, critic,
+    inkBursts: state.ink.uses, campaignComplete: state.nightIndex === NIGHTS.length - 1 && stars > 0, ...state.stats,
   };
 }
