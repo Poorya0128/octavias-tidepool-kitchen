@@ -213,3 +213,15 @@ export function paragraph(ctx, str, x, y, maxWidth, lineHeight, size = 14, color
   if (line) ctx.fillText(line, x, y);
   return y + lineHeight;
 }
+
+/** A four-point twinkle, for sparkles on happy faces, glints and menus. */
+export function sparkle(ctx, x, y, r, color = '#ffffff') {
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.moveTo(x, y - r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.quadraticCurveTo(x, y, x, y + r);
+  ctx.quadraticCurveTo(x, y, x - r, y);
+  ctx.quadraticCurveTo(x, y, x, y - r);
+  ctx.fill();
+}

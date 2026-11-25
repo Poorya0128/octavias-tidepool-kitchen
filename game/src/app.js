@@ -10,12 +10,13 @@ import { buyUpgrade, recordNight, saveCampaign } from './campaign.js';
 import { playEvent, setMuted, unlockAudio, updateMusic } from './audio.js';
 import { actionForArea, actionForKey, hitTest, nightHitAreas } from './input.js';
 import { createArmView, drawOctavia, updateArmView } from './render/octopus.js';
-import { drawAtmosphere, drawBins, drawClamPlate, drawCounter, drawPass, drawStations, drawTrash, drawWall } from './render/scene.js';
+import { drawAtmosphere, drawBins, drawStationOverlays, drawClamPlate, drawCounter, drawPass, drawStations, drawTrash, drawWall } from './render/scene.js';
 import { drawArmSlots, drawBanners, drawChecklist, drawHud, drawKeyHints, drawOrderBoard, drawTideGauge, drawToasts } from './render/ui.js';
 import { ambient, createEffects, drawEffects, spawnFromEvents, updateEffects } from './render/effects.js';
 import { drawHelp, drawMap, drawPause, drawResults, drawSettings, drawShop, drawTitle } from './render/screens.js';
 import { panel, text } from './render/draw.js';
 import { chefThink } from './autochef.js';
+import { streakMultiplier } from './scoring.js';
 
 /** A new app on the title screen. */
 export function createApp({ campaign, audio }) {
@@ -78,7 +79,8 @@ export function updateApp(app, dt) {
     updateArmView(app.armView, app.night, dt, app.night.time, calm);
   }
   updateEffects(app.fx, dt);
-  updateMusic(app.audio, app.screen === 'night' && !app.overlay, app.night ? inRush(app.night) : false);
+  const mood = app.night ? { rush: inRush(app.night), hot: streakMultiplier(app.night.streak) >= 2 } : {};
+  updateMusic(app.audio, app.screen === 'night' && !app.overlay, mood);
 }
 
 /** Draws a night of service: kitchen, Octavia, stations, HUD and effects. */
@@ -92,6 +94,7 @@ function drawNight(ctx, app) {
   drawCounter(ctx);
   drawStations(ctx, night, t);
   drawOctavia(ctx, night, app.armView, t);
+  drawStationOverlays(ctx, night, t);
   drawClamPlate(ctx, night, t);
   drawPass(ctx, night, t);
   drawTrash(ctx);

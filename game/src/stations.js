@@ -7,6 +7,7 @@
 import { SLOT_TARGETS, TUNING } from './config.js';
 import { allowsPrep, INGREDIENT } from './data/ingredients.js';
 import { freeArmNear, holdItem, releaseArm, sendArm } from './arms.js';
+import { chargeInk } from './ink.js';
 
 /** The arm left to the station keeps working it; any other arm only touches the station and returns. */
 const WORKING_PREPS = new Set(['chop', 'simmer']);
@@ -77,15 +78,16 @@ function cookItem(state, stationId, slotIndex, item, dt) {
   if (item.prep === 'chop') {
     const worker = state.arms.find((a) => a.state === 'chop' && a.station === stationId);
     if (!worker || worker.reach > 0) return;
-    const rate = TUNING.chopTime / (state.upgrades.quickArms ? TUNING.quickChopTime : TUNING.chopTime);
+    const base = TUNING.chopTime / (state.upgrades.quickArms ? TUNING.quickChopTime : TUNING.chopTime);
+    const rate = state.ink.active ? base * TUNING.inkChopBoost : base;
     item.t += dt * rate;
-    if (Math.floor((item.t - dt * rate) / 0.32) !== Math.floor(item.t / 0.32)) state.events.push({ type: 'chop', ...at });
+    if (Math.floor((item.t - dt * rate) / 0.32) !== Math.floor(item.t / 0.32)) state.emit({ type: 'chop', ...at });
     if (item.t >= TUNING.chopTime) {
       item.phase = 'done';
       state.stations[stationId].slots[slotIndex] = null;
       holdItem(state, worker, { ing: item.ing, prep: 'chop', quality: 'good' });
       sendArm(state, worker, at);
-      state.events.push({ type: 'chopDone', ...at, ing: item.ing });
+      state.emit({ type: 'chopDone', ...at, ing: item.ing });
     }
     return;
   }
@@ -108,8 +110,8 @@ function cookItem(state, stationId, slotIndex, item, dt) {
     item.phase = item.t < bands[0] ? 'cook' : item.t < bands[1] ? 'perfect' : item.t < bands[2] ? 'over' : 'burnt';
   }
   if (item.phase !== before) {
-    const map = { flip: 'flipReady', perfect: 'perfect', over: 'overdone', burnt: 'burnt' };
-    if (map[item.phase]) state.events.push({ type: map[item.phase], station: stationId, ...at, ing: item.ing });
+    const map = { flip: 'flipReady', perfect: 'cookPerfect', over: 'overdone', burnt: 'cookBurnt' };
+    if (map[item.phase]) state.emit({ type: map[item.phase], station: stationId, slot: slotIndex, ...at, ing: item.ing });
     if (item.phase === 'burnt') {
       state.stats.burnt++;
       releaseStirrer(state, stationId);
@@ -159,7 +161,7 @@ export function placeAtStation(state, stationId, slotIndex = null) {
   const keepsWorking = WORKING_PREPS.has(st.prep) && !(st.prep === 'simmer' && state.upgrades.autoStir);
   arm.state = keepsWorking ? (st.prep === 'chop' ? 'chop' : 'stir') : 'idle';
   arm.station = keepsWorking ? stationId : null;
-  state.events.push({ type: 'place', station: stationId, ...at, ing });
+  state.emit({ type: 'place', station: stationId, ...at, ing });
   return { ok: true };
 }
 
@@ -175,8 +177,11 @@ export function takeFromStation(state, stationId, slotIndex) {
   st.slots[slotIndex] = null;
   holdItem(state, arm, { ing: item.ing, prep: item.prep, quality });
   sendArm(state, arm, at);
-  if (quality === 'perfect') state.stats.perfectCooks++;
-  state.events.push({ type: 'take', station: stationId, ...at, ing: item.ing, quality });
+  state.emit({ type: 'take', station: stationId, ...at, ing: item.ing, quality });
+  if (quality === 'perfect') {
+    state.stats.perfectCooks++;
+    chargeInk(state, TUNING.inkPerfectTake);
+  }
   return { ok: true };
 }
 
@@ -191,7 +196,7 @@ export function flipGrill(state, slotIndex) {
   item.t = 0;
   item.phase = 'cook';
   sendArm(state, arm, at);
-  state.events.push({ type: 'flip', station: 'grill', ...at, ing: item.ing });
+  state.emit({ type: 'flip', station: 'grill', ...at, ing: item.ing });
   return { ok: true };
 }
 
@@ -218,7 +223,7 @@ export function clearBurnt(state, stationId, slotIndex) {
   const item = state.stations[stationId].slots[slotIndex];
   if (!item || item.phase !== 'burnt') return false;
   state.stations[stationId].slots[slotIndex] = null;
-  state.events.push({ type: 'trash', ...SLOT_TARGETS[stationId][slotIndex], ing: item.ing });
+  state.emit({ type: 'trash', ...SLOT_TARGETS[stationId][slotIndex], ing: item.ing });
   return true;
 }
 

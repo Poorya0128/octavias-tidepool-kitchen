@@ -26,9 +26,10 @@ export function createArms() {
   }));
 }
 
-/** Seconds an arm needs to reach a target, with the Quicker Arms upgrade applied. */
+/** Seconds an arm needs to reach a target, with Quicker Arms and a flowing Ink Burst applied. */
 export function reachTime(state) {
-  return state.upgrades.quickArms ? TUNING.quickReachTime : TUNING.reachTime;
+  const base = state.upgrades.quickArms ? TUNING.quickReachTime : TUNING.reachTime;
+  return state.ink.active ? base / TUNING.inkReachBoost : base;
 }
 
 /** Sends an arm's tip toward a point; the logic treats the job as begun, the drawing animates it. */

@@ -4,13 +4,13 @@
  * and banners.
  */
 
-import { ARM_COUNT, LAYOUT, PALETTE } from '../config.js';
+import { ARM_COUNT, LAYOUT, PALETTE, TUNING } from '../config.js';
 import { CUSTOMERS } from '../data/customers.js';
 import { INGREDIENT, PREPS } from '../data/ingredients.js';
 import { RECIPE } from '../data/recipes.js';
 import { missingParts, patienceShare } from '../orders.js';
 import { nextStreakTier, streakMultiplier } from '../scoring.js';
-import { check, clock, keycap, label, panel, ring, roundRect, star, starRow, TAU, text } from './draw.js';
+import { blob, check, clock, keycap, label, panel, ring, roundRect, sparkle, star, starRow, TAU, text } from './draw.js';
 import { drawCustomer } from './customers.js';
 import { drawFinishedDish, drawIngredient } from './food.js';
 
@@ -24,7 +24,21 @@ export function patienceColor(share) {
 /** The rail of shell-shaped tickets across the top. */
 export function drawOrderBoard(ctx, state, t) {
   const b = LAYOUT.board;
-  panel(ctx, 12, b.y, 120, b.h, { fill: '#5a3c26', stroke: INK, r: 14, line: 3 });
+  const wood = ctx.createLinearGradient(12, b.y, 132, b.y + b.h);
+  wood.addColorStop(0, '#8a5a34');
+  wood.addColorStop(1, '#4a2f1c');
+  panel(ctx, 12, b.y, 120, b.h, { fill: wood, stroke: INK, r: 14, line: 3 });
+  ctx.strokeStyle = 'rgba(40,22,10,0.35)';
+  ctx.lineWidth = 2;
+  for (const gy of [44, 70, 96]) {
+    ctx.beginPath();
+    ctx.moveTo(20, b.y + gy);
+    ctx.quadraticCurveTo(72, b.y + gy + 4, 124, b.y + gy - 1);
+    ctx.stroke();
+  }
+  ctx.strokeStyle = 'rgba(255,209,102,0.55)';
+  roundRect(ctx, 17, b.y + 5, 110, b.h - 10, 10);
+  ctx.stroke();
   text(ctx, 'CURRENT', 72, b.y + 36, { size: 18, color: PALETTE.gold, align: 'center', line: 4 });
   text(ctx, 'BOARD', 72, b.y + 58, { size: 18, color: PALETTE.gold, align: 'center', line: 4 });
   label(ctx, `${state.tickets.length} waiting`, 72, b.y + 84, 14, PALETTE.pearl, 'center', 800);
@@ -59,57 +73,121 @@ export function drawOrderBoard(ctx, state, t) {
   }
 }
 
-/** One shell ticket: portrait with patience ring, dish, steps and ticket number. */
+/** A faint speckle-and-fibre pattern that makes tickets read as paper (built once, lazily). */
+let paperGrain = null;
+function paperPattern(ctx) {
+  if (!paperGrain && typeof document !== 'undefined') {
+    const c = document.createElement('canvas');
+    c.width = 96;
+    c.height = 96;
+    const g = c.getContext('2d');
+    for (let i = 0; i < 140; i++) {
+      g.fillStyle = `rgba(120,86,50,${0.04 + Math.random() * 0.08})`;
+      g.fillRect(Math.random() * 96, Math.random() * 96, 1 + Math.random() * 1.5, 1 + Math.random() * 1.5);
+    }
+    g.strokeStyle = 'rgba(120,86,50,0.07)';
+    for (let i = 0; i < 12; i++) {
+      const x = Math.random() * 96;
+      const y = Math.random() * 96;
+      g.beginPath();
+      g.moveTo(x, y);
+      g.lineTo(x + 6 + Math.random() * 10, y + Math.random() * 3 - 1.5);
+      g.stroke();
+    }
+    paperGrain = ctx.createPattern(c, 'repeat');
+  }
+  return paperGrain;
+}
+
+/** The outline of a ticket: a scalloped shell top over a rounded paper slip. */
+function ticketPath(x, y, w, h) {
+  const p = new Path2D();
+  p.moveTo(x, y + 14);
+  for (let k = 0; k <= 6; k++) {
+    const sx = x + (k * w) / 6;
+    p.quadraticCurveTo(sx - w / 12, y - 2, sx, y + 14);
+  }
+  p.lineTo(x + w, y + h - 12);
+  p.quadraticCurveTo(x + w, y + h, x + w - 12, y + h);
+  p.lineTo(x + 12, y + h);
+  p.quadraticCurveTo(x, y + h, x, y + h - 12);
+  p.closePath();
+  return p;
+}
+
+/**
+ * One shell ticket: grained paper (lilac and gold-framed for the critic), a peg, the portrait
+ * in its patience ring, the dish, its steps and the ticket number; the selected one lifts and glows.
+ */
 function drawTicket(ctx, state, ticket, x, y, t) {
   const tk = LAYOUT.ticket;
   const selected = ticket.id === state.selectedTicket;
   const share = patienceShare(ticket);
   const recipe = RECIPE[ticket.recipeId];
-  const lift = selected ? -4 : 0;
   const shake = share < 0.2 ? Math.sin(t * 30) * 1.5 : 0;
   const tx = x + shake;
-  const ty = y + lift;
+  const ty = y + (selected ? -4 : 0);
+  const shape = ticketPath(tx, ty, tk.w, tk.h);
+  ctx.save();
+  ctx.translate(3, 5);
+  ctx.fillStyle = 'rgba(3,18,22,0.4)';
+  ctx.fill(shape);
+  ctx.restore();
+  ctx.lineJoin = 'round';
   if (selected) {
-    ctx.save();
-    ctx.shadowColor = PALETTE.gold;
-    ctx.shadowBlur = 16;
-    panel(ctx, tx - 3, ty - 3, tk.w + 6, tk.h + 6, { fill: PALETTE.gold, stroke: PALETTE.gold, r: 16, line: 2, shadow: false });
-    ctx.restore();
+    ctx.strokeStyle = `rgba(255,209,102,${0.3 + 0.15 * Math.sin(t * 5)})`;
+    ctx.lineWidth = 16;
+    ctx.stroke(shape);
+    ctx.strokeStyle = PALETTE.gold;
+    ctx.lineWidth = 9;
+    ctx.stroke(shape);
   }
-  ctx.beginPath();
-  ctx.moveTo(tx, ty + 14);
-  for (let k = 0; k <= 6; k++) {
-    const sx = tx + (k * tk.w) / 6;
-    ctx.quadraticCurveTo(sx - tk.w / 12, ty - 2, sx, ty + 14);
+  const paper = ctx.createLinearGradient(0, ty, 0, ty + tk.h);
+  paper.addColorStop(0, ticket.critic ? '#f8f1ff' : '#fffaf0');
+  paper.addColorStop(1, ticket.critic ? '#e2d3fa' : '#f3e2c4');
+  ctx.fillStyle = paper;
+  ctx.fill(shape);
+  const grain = paperPattern(ctx);
+  if (grain) {
+    ctx.fillStyle = grain;
+    ctx.fill(shape);
   }
-  ctx.lineTo(tx + tk.w, ty + tk.h - 12);
-  ctx.quadraticCurveTo(tx + tk.w, ty + tk.h, tx + tk.w - 12, ty + tk.h);
-  ctx.lineTo(tx + 12, ty + tk.h);
-  ctx.quadraticCurveTo(tx, ty + tk.h, tx, ty + tk.h - 12);
-  ctx.closePath();
-  ctx.fillStyle = ticket.critic ? '#efe4ff' : '#fff6e6';
-  ctx.fill();
   ctx.lineWidth = 3;
   ctx.strokeStyle = INK;
-  ctx.stroke();
-  ctx.fillStyle = ticket.critic ? '#5a4470' : PALETTE.coral;
-  roundRect(ctx, tx + tk.w / 2 - 14, ty - 6, 28, 14, 5);
+  ctx.stroke(shape);
+  if (ticket.critic) {
+    ctx.save();
+    ctx.translate(tx + tk.w / 2, ty + tk.h / 2 + 4);
+    ctx.scale((tk.w - 10) / tk.w, (tk.h - 12) / tk.h);
+    ctx.translate(-(tx + tk.w / 2), -(ty + tk.h / 2));
+    ctx.strokeStyle = PALETTE.gold;
+    ctx.lineWidth = 3;
+    ctx.stroke(shape);
+    ctx.restore();
+  }
+  const peg = ctx.createLinearGradient(0, ty - 7, 0, ty + 8);
+  peg.addColorStop(0, selected ? '#fff0b8' : ticket.critic ? '#9a78c4' : '#ffb08f');
+  peg.addColorStop(1, selected ? '#e0a92e' : ticket.critic ? '#4a3463' : PALETTE.coralDark);
+  ctx.fillStyle = peg;
+  roundRect(ctx, tx + tk.w / 2 - 14, ty - 7, 28, 15, 5);
   ctx.fill();
+  ctx.lineWidth = 2.5;
   ctx.stroke();
   const pr = 22;
   const px = tx + 28;
   const py = ty + 40;
-  drawCustomer(ctx, ticket.customerId, px, py, pr, share, t, ticket.changed);
+  if (share < 0.2) ring(ctx, px, py, pr + 6, 1, `rgba(239,91,76,${0.25 + 0.25 * Math.sin(t * 10)})`, 11, 'rgba(0,0,0,0)');
+  drawCustomer(ctx, ticket.customerId, px, py, pr, share, ticket.changed);
   ctx.lineWidth = 2.5;
   ctx.strokeStyle = INK;
   ctx.beginPath();
   ctx.arc(px, py, pr, 0, TAU);
   ctx.stroke();
-  ring(ctx, px, py, pr + 5, share, patienceColor(share), 5, 'rgba(59,42,77,0.25)');
+  ring(ctx, px, py, pr + 5, share, patienceColor(share), 6, 'rgba(59,42,77,0.3)');
   label(ctx, `#${ticket.id}`, tx + tk.w - 8, ty + 26, 14, INK, 'right', 900);
   drawFinishedDish(ctx, ticket.recipeId, tx + tk.w - 42, ty + 54, 66);
-  label(ctx, CUSTOMERS[ticket.customerId].name, tx + 8, ty + 78, 12, '#5a4470', 'left', 800);
-  label(ctx, recipe.name, tx + 8, ty + 92, 13, INK, 'left', 900);
+  label(ctx, CUSTOMERS[ticket.customerId].name, tx + 8, ty + 78, 12, ticket.critic ? '#7a3fbf' : '#5a4470', 'left', 800);
+  text(ctx, recipe.name, tx + 8, ty + 92, { size: 13, color: INK, outline: null, weight: 900, maxWidth: tk.w - 14 });
   const onPlate = state.plate.recipeId === ticket.recipeId ? state.plate.parts : [];
   const missing = missingParts(ticket.recipeId, onPlate);
   const steps = recipe.parts.length + 1;
@@ -135,53 +213,7 @@ function drawTicket(ctx, state, ticket, x, y, t) {
 export function drawHud(ctx, state, t) {
   const h = LAYOUT.hud;
   panel(ctx, h.x, h.y, h.w, h.h, { fill: PALETTE.deep, stroke: '#c99a4b', r: 16, line: 4 });
-  const left = Math.max(0, state.cfg.duration - state.time);
-  const frac = left / state.cfg.duration;
-  const cx = h.x + 62;
-  const cy = h.y + h.h / 2;
-  const r = 50;
-  ctx.save();
-  ctx.beginPath();
-  ctx.arc(cx, cy, r, 0, TAU);
-  ctx.fillStyle = '#0a2a30';
-  ctx.fill();
-  ctx.clip();
-  const level = cy + r - frac * r * 2;
-  ctx.fillStyle = frac < 0.2 ? '#ef5b4c' : '#2f9fb3';
-  ctx.beginPath();
-  ctx.moveTo(cx - r, cy + r);
-  for (let x = -r; x <= r; x += 6) ctx.lineTo(cx + x, level + Math.sin(x * 0.12 + t * 3) * 3);
-  ctx.lineTo(cx + r, cy + r);
-  ctx.closePath();
-  ctx.fill();
-  ctx.restore();
-  ctx.lineWidth = 6;
-  ctx.strokeStyle = '#f4d8a6';
-  ctx.beginPath();
-  ctx.arc(cx, cy, r, 0, TAU);
-  ctx.stroke();
-  ctx.lineWidth = 2.5;
-  ctx.strokeStyle = INK;
-  ctx.beginPath();
-  ctx.arc(cx, cy, r + 4, 0, TAU);
-  ctx.stroke();
-  for (let i = 0; i < 12; i++) {
-    const a = (i / 12) * TAU;
-    ctx.beginPath();
-    ctx.moveTo(cx + Math.cos(a) * (r - 7), cy + Math.sin(a) * (r - 7));
-    ctx.lineTo(cx + Math.cos(a) * (r - 1), cy + Math.sin(a) * (r - 1));
-    ctx.stroke();
-  }
-  const hand = -Math.PI / 2 + (1 - frac) * TAU;
-  ctx.strokeStyle = PALETTE.coral;
-  ctx.lineWidth = 4;
-  ctx.lineCap = 'round';
-  ctx.beginPath();
-  ctx.moveTo(cx, cy);
-  ctx.lineTo(cx + Math.cos(hand) * (r - 12), cy + Math.sin(hand) * (r - 12));
-  ctx.stroke();
-  ctx.lineCap = 'butt';
-  text(ctx, clock(left), cx, cy + 10, { size: 28, color: PALETTE.pearl, align: 'center', line: 5 });
+  drawTideClock(ctx, state, h.x + 62, h.y + h.h / 2, 50, t);
   const rx = h.x + 124;
   text(ctx, `NIGHT ${state.nightIndex + 1}/5`, rx, h.y + 26, { size: 15, color: PALETTE.gold, line: 3 });
   text(ctx, state.cfg.name, rx, h.y + 44, { size: 13, color: PALETTE.foam, line: 3, maxWidth: 108 });
@@ -206,9 +238,90 @@ export function drawHud(ctx, state, t) {
   ctx.lineWidth = 2;
   ctx.strokeStyle = splat ? PALETTE.gold : INK;
   ctx.stroke();
-  text(ctx, `INK x${mult}`, sx + 6, sy + 9, { size: 17, color: splat ? PALETTE.gold : PALETTE.pearl, line: 3 });
-  label(ctx, next ? `${state.streak}/${next}` : 'MAX', sx + 104, sy + 8, 12, PALETTE.pearl, 'right', 800);
+  text(ctx, `INK x${mult}`, sx + 6, sy + 9, { size: 17, color: splat ? PALETTE.gold : PALETTE.pearl, line: 3, maxWidth: 64 });
+  label(ctx, next ? `${state.streak}/${next}` : 'MAX', sx + 104, sy + 8, 11, PALETTE.pearl, 'right', 800);
   drawStatusStrip(ctx, state);
+}
+
+/**
+ * The night timer as a brass tide clock: the water inside ebbs with the time left, a hand sweeps
+ * the dial and big digits count down, glowing and pulsing red in the last 30 seconds.
+ */
+function drawTideClock(ctx, state, cx, cy, r, t) {
+  const left = Math.max(0, state.cfg.duration - state.time);
+  const frac = left / state.cfg.duration;
+  const urgent = left <= 30 && left > 0;
+  const pulse = 0.5 + 0.5 * Math.sin(t * 8);
+  if (urgent) {
+    const glow = ctx.createRadialGradient(cx, cy, r * 0.8, cx, cy, r + 26);
+    glow.addColorStop(0, `rgba(255,90,60,${0.35 + 0.35 * pulse})`);
+    glow.addColorStop(1, 'rgba(255,90,60,0)');
+    ctx.fillStyle = glow;
+    ctx.fillRect(cx - r - 26, cy - r - 26, (r + 26) * 2, (r + 26) * 2);
+  }
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, TAU);
+  ctx.fillStyle = '#082a30';
+  ctx.fill();
+  ctx.clip();
+  const level = cy + r - frac * r * 2;
+  const sea = ctx.createLinearGradient(0, level - 4, 0, cy + r);
+  sea.addColorStop(0, urgent ? '#ff8a6a' : '#5fd0dc');
+  sea.addColorStop(1, urgent ? '#b8322a' : '#1b6f86');
+  ctx.fillStyle = sea;
+  ctx.beginPath();
+  ctx.moveTo(cx - r, cy + r);
+  for (let x = -r; x <= r; x += 5) ctx.lineTo(cx + x, level + Math.sin(x * 0.12 + t * 3) * 3);
+  ctx.lineTo(cx + r, cy + r);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,0.08)';
+  ctx.beginPath();
+  ctx.ellipse(cx - r * 0.3, cy - r * 0.45, r * 0.55, r * 0.3, -0.5, 0, TAU);
+  ctx.fill();
+  ctx.restore();
+  const brass = ctx.createLinearGradient(cx - r, cy - r, cx + r, cy + r);
+  brass.addColorStop(0, '#fff0b8');
+  brass.addColorStop(0.5, '#d9a84e');
+  brass.addColorStop(1, '#8a6424');
+  ctx.lineWidth = 9;
+  ctx.strokeStyle = brass;
+  ctx.beginPath();
+  ctx.arc(cx, cy, r + 2, 0, TAU);
+  ctx.stroke();
+  ctx.lineWidth = 2.5;
+  ctx.strokeStyle = INK;
+  for (const rr of [r - 2.5, r + 6.5]) {
+    ctx.beginPath();
+    ctx.arc(cx, cy, rr, 0, TAU);
+    ctx.stroke();
+  }
+  ctx.strokeStyle = 'rgba(255,246,230,0.85)';
+  for (let i = 0; i < 12; i++) {
+    const a = (i / 12) * TAU;
+    const inner = i % 3 ? r - 9 : r - 14;
+    ctx.lineWidth = i % 3 ? 2 : 3.5;
+    ctx.beginPath();
+    ctx.moveTo(cx + Math.cos(a) * inner, cy + Math.sin(a) * inner);
+    ctx.lineTo(cx + Math.cos(a) * (r - 4), cy + Math.sin(a) * (r - 4));
+    ctx.stroke();
+  }
+  const hand = -Math.PI / 2 + (1 - frac) * TAU;
+  ctx.lineCap = 'round';
+  for (const [w, col] of [[7, INK], [3.5, PALETTE.coral]]) {
+    ctx.lineWidth = w;
+    ctx.strokeStyle = col;
+    ctx.beginPath();
+    ctx.moveTo(cx - Math.cos(hand) * 10, cy - Math.sin(hand) * 10);
+    ctx.lineTo(cx + Math.cos(hand) * (r - 10), cy + Math.sin(hand) * (r - 10));
+    ctx.stroke();
+  }
+  ctx.lineCap = 'butt';
+  blob(ctx, cx, cy, 5, PALETTE.gold, INK, 2);
+  const size = urgent ? 31 + pulse * 3 : 31;
+  text(ctx, clock(left), cx, cy + 11, { size, color: urgent ? '#ffe3a3' : PALETTE.pearl, align: 'center', line: 7 });
+  text(ctx, 'TIDE', cx, cy + 30, { size: 10, color: urgent ? '#ffd0c4' : PALETTE.foam, align: 'center', line: 3 });
 }
 
 /** Under the timer: Madame Mantis's live rating on critic nights, else the coins to the next star. */
@@ -232,8 +345,89 @@ function drawStatusStrip(ctx, state) {
 /** Short tags for what a held item is: still raw, cut on the board, or cooked. */
 const HELD_TAGS = { none: 'raw', raw: 'raw', chop: 'cut', simmer: 'ok', sear: 'ok', steam: 'ok' };
 
-/** The eight arm slots: free, holding an item, chopping or stirring. */
+/**
+ * The Ink Burst vial in the counter corner under the arms panel: violet ink rises with perfect
+ * cooks, the vial pulses when full (press I), and a ring counts down while the burst flows.
+ */
+function drawInkMeter(ctx, state, t) {
+  const b = LAYOUT.ink;
+  const ink = state.ink ?? { meter: 0, active: false, endsAt: 0 };
+  const full = ink.meter >= 1;
+  const live = full || ink.active;
+  const pulse = 0.5 + 0.5 * Math.sin(t * 6);
+  panel(ctx, b.x, b.y, b.w, b.h, { fill: 'rgba(38,22,62,0.92)', stroke: INK, r: 14, line: 3 });
+  if (live) {
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = `rgba(201,166,255,${0.55 + 0.45 * pulse})`;
+    roundRect(ctx, b.x + 4, b.y + 4, b.w - 8, b.h - 8, 11);
+    ctx.stroke();
+  }
+  text(ctx, 'INK BURST', b.x + b.w / 2, b.y + 19, { size: 13, color: '#e2ccff', align: 'center', line: 3 });
+  const cx = b.x + 40;
+  const cy = b.y + 64;
+  const r = 20;
+  if (live) {
+    const glow = ctx.createRadialGradient(cx, cy, 4, cx, cy, 40);
+    glow.addColorStop(0, `rgba(190,140,255,${0.4 + 0.3 * pulse})`);
+    glow.addColorStop(1, 'rgba(190,140,255,0)');
+    ctx.fillStyle = glow;
+    ctx.fillRect(cx - 40, cy - 40, 80, 80);
+  }
+  const vial = new Path2D();
+  vial.moveTo(cx - 7, cy - 30);
+  vial.lineTo(cx - 7, cy - r + 2);
+  vial.arc(cx, cy, r, -Math.PI / 2 - 0.36, Math.PI * 1.5 + 0.36, true);
+  vial.lineTo(cx + 7, cy - 30);
+  vial.closePath();
+  ctx.fillStyle = 'rgba(214,240,245,0.18)';
+  ctx.fill(vial);
+  const share = ink.active ? 1 : Math.min(1, ink.meter);
+  if (share > 0) {
+    ctx.save();
+    ctx.clip(vial);
+    const top = cy + r - share * (r * 2 + 10);
+    const liquid = ctx.createLinearGradient(0, top, 0, cy + r);
+    liquid.addColorStop(0, '#d7b8ff');
+    liquid.addColorStop(1, '#5b2ca0');
+    ctx.fillStyle = liquid;
+    ctx.beginPath();
+    ctx.moveTo(cx - r, cy + r);
+    for (let x = -r; x <= r; x += 4) ctx.lineTo(cx + x, top + Math.sin(x * 0.3 + t * 4) * 1.6);
+    ctx.lineTo(cx + r, cy + r);
+    ctx.fill();
+    for (let i = 0; i < 3; i++) {
+      const by = cy + r - ((t * 14 + i * 13) % Math.max(4, cy + r - top));
+      blob(ctx, cx - 8 + i * 8, by, 1.8 + (i % 2), 'rgba(255,255,255,0.55)', null);
+    }
+    ctx.restore();
+  }
+  ctx.fillStyle = 'rgba(255,255,255,0.4)';
+  ctx.beginPath();
+  ctx.ellipse(cx - 9, cy - 6, 4, 8, 0.4, 0, TAU);
+  ctx.fill();
+  ctx.lineWidth = 3;
+  ctx.lineJoin = 'round';
+  ctx.strokeStyle = INK;
+  ctx.stroke(vial);
+  ctx.fillStyle = '#b07a48';
+  roundRect(ctx, cx - 9, cy - 37, 18, 9, 3);
+  ctx.fill();
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  if (ink.active) {
+    const left = Math.max(0, ink.endsAt - state.time);
+    ring(ctx, cx, cy, r + 7, left / TUNING.inkDuration, '#e2ccff', 4, 'rgba(0,0,0,0.35)');
+    for (let i = 0; i < 3; i++) sparkle(ctx, cx + Math.cos(t * 3 + i * 2.1) * 30, cy + Math.sin(t * 3 + i * 2.1) * 30, 4, '#f3e8ff');
+  }
+  keycap(ctx, 'I', b.x + 82, b.y + 50, { size: 15, fill: full ? PALETTE.gold : PALETTE.pearl });
+  const status = ink.active ? `${Math.ceil(Math.max(0, ink.endsAt - state.time))}s` : full ? 'GO!' : `${Math.floor(share * 100)}%`;
+  text(ctx, status, b.x + 82, b.y + 80, { size: full && !ink.active ? 14 + pulse * 2 : 14, color: live ? PALETTE.gold : PALETTE.pearl, align: 'center', line: 3 });
+  label(ctx, ink.active ? 'patience held' : full ? 'press I!' : 'perfect cooks', b.x + b.w / 2, b.y + 102, 11, live ? '#f3e8ff' : 'rgba(226,204,255,0.75)', 'center', 800);
+}
+
+/** The eight arm slots (free, holding an item, chopping or stirring), with the Ink Burst vial below. */
 export function drawArmSlots(ctx, state, t) {
+  drawInkMeter(ctx, state, t);
   const a = LAYOUT.arms;
   panel(ctx, a.x, a.y, a.w, a.h, { fill: 'rgba(8,42,48,0.88)', stroke: INK, r: 14, line: 3 });
   const free = state.arms.filter((arm) => arm.state === 'idle').length;
@@ -242,7 +436,12 @@ export function drawArmSlots(ctx, state, t) {
   state.arms.forEach((arm, i) => {
     const y = a.y + 52 + i * 39;
     const busy = arm.state !== 'idle';
-    ctx.fillStyle = busy ? '#ffb3a3' : 'rgba(255,246,230,0.1)';
+    if (busy) {
+      const skin = ctx.createLinearGradient(0, y, 0, y + 34);
+      skin.addColorStop(0, '#ffd0c4');
+      skin.addColorStop(1, '#ff9a88');
+      ctx.fillStyle = skin;
+    } else ctx.fillStyle = 'rgba(255,246,230,0.1)';
     roundRect(ctx, a.x + 8, y, a.w - 16, 34, 10);
     ctx.fill();
     ctx.lineWidth = 2;
@@ -266,7 +465,16 @@ export function drawArmSlots(ctx, state, t) {
 /** The plate checklist: which parts are on the Clam Plate and what is left. */
 export function drawChecklist(ctx, state) {
   const c = LAYOUT.checklist;
-  panel(ctx, c.x, c.y, c.w, c.h, { fill: PALETTE.pearl, stroke: INK, r: 14, line: 3 });
+  const paper = ctx.createLinearGradient(0, c.y, 0, c.y + c.h);
+  paper.addColorStop(0, '#fffaf0');
+  paper.addColorStop(1, '#f1e2c6');
+  panel(ctx, c.x, c.y, c.w, c.h, { fill: paper, stroke: INK, r: 14, line: 3 });
+  const grain = paperPattern(ctx);
+  if (grain) {
+    ctx.fillStyle = grain;
+    roundRect(ctx, c.x, c.y, c.w, c.h, 14);
+    ctx.fill();
+  }
   const plate = state.plate;
   if (!plate.recipeId) {
     text(ctx, 'CLAM PLATE IS EMPTY', c.x + 14, c.y + 28, { size: 15, color: PALETTE.ink, outline: null });
@@ -348,9 +556,9 @@ export function drawTideGauge(ctx, state, t) {
 export function drawKeyHints(ctx) {
   const k = LAYOUT.keys;
   panel(ctx, k.x, k.y, k.w, k.h, { fill: '#1f3a3f', stroke: INK, r: 12, line: 3 });
-  const rows = [['1-0', 'grab'], ['QWER', 'stations'], ['Space', 'plate'], ['S', 'serve'], ['Bksp', 'bin'], ['P H M', 'pause help mute']];
+  const rows = [['1-0', 'grab'], ['QWER', 'stations'], ['Space', 'plate'], ['S', 'serve'], ['I', 'ink burst'], ['Bksp', 'bin'], ['P H M', 'pause help mute']];
   rows.forEach(([key, what], i) => {
-    const y = k.y + 16 + i * 20;
+    const y = k.y + 15 + i * 17.5;
     keycap(ctx, key, k.x + 10, y, { size: 11, align: 'left' });
     label(ctx, what, k.x + 66, y + 4, 12, PALETTE.pearl, 'left', 700);
   });
@@ -394,7 +602,17 @@ function banner(ctx, title, sub, scale) {
   ctx.translate(640, y + h / 2);
   ctx.scale(scale, scale);
   ctx.translate(-640, -(y + h / 2));
-  panel(ctx, x, y, w, h, { fill: 'rgba(29,111,138,0.95)', stroke: PALETTE.gold, r: 22, line: 4 });
+  const sea = ctx.createLinearGradient(0, y, 0, y + h);
+  sea.addColorStop(0, 'rgba(47,159,179,0.97)');
+  sea.addColorStop(1, 'rgba(14,59,67,0.97)');
+  panel(ctx, x, y, w, h, { fill: sea, stroke: INK, r: 22, line: 4 });
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = PALETTE.gold;
+  roundRect(ctx, x + 5, y + 5, w - 10, h - 10, 17);
+  ctx.stroke();
+  ctx.fillStyle = 'rgba(255,255,255,0.14)';
+  roundRect(ctx, x + 12, y + 9, w - 24, h * 0.32, 12);
+  ctx.fill();
   text(ctx, title, 640, y + 36, { size: 28, color: PALETTE.gold, align: 'center', line: 6 });
   text(ctx, sub, 640, y + 62, { size: 15, color: PALETTE.pearl, align: 'center', line: 4, maxWidth: w - 30 });
   ctx.restore();

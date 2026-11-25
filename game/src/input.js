@@ -35,6 +35,7 @@ export function nightHitAreas(state) {
   areas.push({ kind: 'plate', x: p.x - p.w / 2, y: p.y - 92, w: p.w, h: 150 });
   const tr = LAYOUT.trash;
   areas.push({ kind: 'trash', x: tr.x, y: tr.y, w: tr.w, h: tr.h });
+  areas.push({ kind: 'ink', ...LAYOUT.ink });
   state.pass.forEach((_, i) => {
     const c = slotPoint(i);
     areas.push({ kind: 'pass', index: i, x: c.x - 90, y: c.y - 64, w: 180, h: 128 });
@@ -56,6 +57,7 @@ export function actionForArea(area) {
     case 'station': return { type: 'station', id: area.id, slot: area.slot ?? null };
     case 'plate': return { type: 'plate' };
     case 'trash': return { type: 'trash' };
+    case 'ink': return { type: 'ink' };
     case 'pass': return { type: 'serve', index: area.index };
     case 'ticket': return { type: 'select', id: area.id };
     default: return null;
@@ -72,6 +74,7 @@ export function actionForKey(state, key) {
   if (k === ' ' || k === 'Enter') return { type: 'plate' };
   if (k === 's') return { type: 'serve' };
   if (k === 'Tab') return { type: 'cycle' };
+  if (k === 'i') return { type: 'ink' };
   if (k === 'Backspace' || k === 'Delete') return { type: 'trash' };
   return null;
 }
