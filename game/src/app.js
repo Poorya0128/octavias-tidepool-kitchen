@@ -22,7 +22,7 @@ export function createApp({ campaign, audio }) {
   const app = {
     screen: 'title', overlay: null, campaign, audio, night: null, summary: null,
     mapSel: Math.min(campaign.unlocked, NIGHTS.length) - 1, fx: createEffects(), armView: null,
-    buttons: [], t: 0, hoverBin: null, drag: null, frozen: false, seed: 1,
+    buttons: [], t: 0, hoverBin: null, drag: null, frozen: false, seed: 1, returnTo: null,
   };
   setMuted(audio, !campaign.settings.sound);
   return app;
@@ -35,6 +35,7 @@ export function startNight(app, nightIndex, seed = (Date.now() % 100000) + 1) {
   app.fx = createEffects();
   app.screen = 'night';
   app.overlay = app.campaign.seenHelp ? null : 'help';
+  app.returnTo = null;
   app.campaign.seenHelp = true;
   app.mapSel = nightIndex;
   app.seed = seed;
@@ -133,6 +134,17 @@ export function drawApp(ctx, app) {
   app.buttons = buttons;
 }
 
+/** Opens a help or settings card; closing it returns to the pause menu if that is where it came from. */
+function openOverlay(app, name) {
+  app.returnTo = app.overlay === 'pause' ? 'pause' : null;
+  app.overlay = name;
+}
+
+function closeOverlay(app) {
+  app.overlay = app.returnTo;
+  app.returnTo = null;
+}
+
 /** Runs a screen command from a button or a key. */
 export function command(app, id) {
   playEvent(app.audio, 'click');
@@ -147,10 +159,10 @@ export function command(app, id) {
   }
   const actions = {
     play: () => { app.screen = 'map'; },
-    help: () => { app.overlay = 'help'; },
-    closeHelp: () => { app.overlay = app.screen === 'night' ? 'pause' : null; },
-    settings: () => { app.overlay = 'settings'; },
-    closeSettings: () => { app.overlay = app.screen === 'night' ? 'pause' : null; saveCampaign(app.campaign); },
+    help: () => openOverlay(app, 'help'),
+    closeHelp: () => closeOverlay(app),
+    settings: () => openOverlay(app, 'settings'),
+    closeSettings: () => { closeOverlay(app); saveCampaign(app.campaign); },
     toggleSound: () => {
       app.campaign.settings.sound = !app.campaign.settings.sound;
       setMuted(app.audio, !app.campaign.settings.sound);
@@ -205,7 +217,7 @@ export function handleKey(app, key) {
   }
   if (app.screen === 'night') {
     if (k === 'p' || k === 'Escape') { app.overlay = 'pause'; return true; }
-    if (k === 'h') { app.overlay = 'help'; return true; }
+    if (k === 'h') { openOverlay(app, 'help'); return true; }
     const action = actionForKey(app.night, key);
     if (!action) return false;
     dispatch(app.night, action);

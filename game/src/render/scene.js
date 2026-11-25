@@ -17,6 +17,13 @@ const INK = PALETTE.ink;
 
 /** Wall tiles, caustic ripples, the porthole with passing fish, a shelf and the menu slate. */
 export function drawWall(ctx, state, t, calm) {
+  const top = ctx.createLinearGradient(0, 0, 0, 150);
+  top.addColorStop(0, '#061c21');
+  top.addColorStop(1, '#0b2b31');
+  ctx.fillStyle = top;
+  ctx.fillRect(0, 0, 1280, 150);
+  ctx.fillStyle = 'rgba(127,209,185,0.05)';
+  for (let x = 0; x < 1280; x += 80) ctx.fillRect(x, 0, 2, 150);
   const g = ctx.createLinearGradient(0, 140, 0, LAYOUT.wallBottom);
   g.addColorStop(0, '#0b3239');
   g.addColorStop(1, '#14525b');
