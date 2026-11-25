@@ -439,7 +439,7 @@ const VESSELS = {
       ctx.lineCap = 'butt';
     }
     oval(ctx, x, y - 8 * u, 72 * u, 18 * u, '#fff6e6', INK, 3);
-    oval(ctx, x, y - 7 * u, 62 * u, 13 * u, vgrad(ctx, y - 20 * u, y + 6 * u, '#b9ddd4', '#e4f4ef'), null);
+    oval(ctx, x, y - 7 * u, 62 * u, 13 * u, vgrad(ctx, y - 20 * u, y + 6 * u, '#5f998f', '#b6dbd2'), null);
   },
   cup(ctx, x, y, u) {
     shadow(ctx, x, y + 36 * u, 46 * u, 10 * u);
@@ -529,6 +529,13 @@ const DISHES = {
       ctx.lineWidth = 2;
       ctx.strokeStyle = 'rgba(59,42,77,0.45)';
       ctx.stroke();
+      ctx.fillStyle = '#e2d3b8';
+      for (let i = 0; i < 12; i++) {
+        ctx.beginPath();
+        ctx.ellipse(x + (((i * 37) % 11) / 11 - 0.5) * 90 * u, y - (14 + ((i * 53) % 7) * 2) * u, 3.4 * u, 1.7 * u, i, 0, TAU);
+        ctx.fill();
+      }
+      gloss(ctx, x - 18 * u, y - 22 * u, 30 * u, 0.75);
     }
     if (hasPart(parts, 'shroom', 'sear')) {
       drawIngredient(ctx, 'shroom', x - 24 * u, y - 24 * u, 34 * u, 'sear');

@@ -87,6 +87,7 @@ const SOUNDS = {
   flip: (a) => hiss(a, { dur: 0.35, vol: 0.22, freq: 4200, q: 0.6 }),
   cookBurnt: (a) => { hiss(a, { dur: 0.7, vol: 0.22, freq: 900, slide: -600, q: 0.5, type: 'lowpass' }); tone(a, { freq: 150, slide: -80, dur: 0.5, vol: 0.1, type: 'sawtooth' }); },
   take: (a) => tone(a, { freq: 600, slide: 200, dur: 0.1, vol: 0.16 }),
+  stir: (a) => hiss(a, { dur: 0.25, vol: 0.14, freq: 700, slide: 500, q: 3 }),
   plateAdd: (a) => tone(a, { freq: 760, dur: 0.08, vol: 0.14, type: 'triangle' }),
   finish: (a) => { tone(a, { freq: 523, dur: 0.12, vol: 0.18, type: 'triangle' }); tone(a, { freq: 784, dur: 0.18, vol: 0.16, type: 'triangle', at: 0.08 }); },
   serve: (a) => { tone(a, { freq: 1568, dur: 0.9, vol: 0.16 }); tone(a, { freq: 2349, dur: 0.7, vol: 0.08, at: 0.01 }); tone(a, { freq: 988, dur: 0.12, vol: 0.12, type: 'square', at: 0.12 }); },
@@ -117,12 +118,14 @@ export function playEvent(audio, type) {
 
 /**
  * Schedules the plucked-string loop a little ahead of time: faster during a Spring Tide (`rush`),
- * with a bass arpeggio under it while the Ink Streak is x2 or more (`hot`).
+ * with a bass arpeggio under it while the Ink Streak is x2 or more (`hot`). After a pause or a
+ * mute it picks up from now instead of replaying the beats it missed.
  */
 export function updateMusic(audio, playing, { rush = false, hot = false } = {}) {
   if (!audio.ctx || audio.muted || !playing) return;
   const c = audio.ctx;
   const beat = rush ? 0.2 : 0.27;
+  if (audio.nextNote < c.currentTime) audio.nextNote = c.currentTime + 0.05;
   while (audio.nextNote < c.currentTime + 0.25) {
     const step = audio.musicStep % MELODY.length;
     const note = SCALE[MELODY[step]];

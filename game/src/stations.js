@@ -200,22 +200,27 @@ export function flipGrill(state, slotIndex) {
   return { ok: true };
 }
 
-/** Starts or stops an arm stirring a pot. */
+/** Starts or stops an arm stirring a pot (W toggles it), with a toast and a `stir` event either way. */
 export function toggleStir(state, stationId) {
   const item = state.stations[stationId].slots[0];
   const stirrer = state.arms.find((a) => a.state === 'stir' && a.station === stationId);
+  const at = SLOT_TARGETS[stationId][0];
   if (stirrer) {
     releaseArm(state, stirrer);
-    return { ok: true, info: 'Stopped stirring' };
+    state.emit({ type: 'stir', on: false, station: stationId, ...at });
+    state.toast('Stopped stirring: the pot burns faster', '#ff9f1c');
+    return { ok: true };
   }
   if (!item || item.phase === 'burnt') return { ok: false, reason: 'The pot is empty' };
-  const at = SLOT_TARGETS[stationId][0];
+  if (state.upgrades.autoStir) return { ok: false, reason: 'The Auto-Stir Anemone is stirring it' };
   const arm = freeArmNear(state, at);
   if (!arm) return { ok: false, reason: 'No free arm to stir!', noArm: true };
   arm.state = 'stir';
   arm.station = stationId;
   sendArm(state, arm, at);
-  return { ok: true, info: 'Stirring' };
+  state.emit({ type: 'stir', on: true, station: stationId, ...at });
+  state.toast('Stirring the pot again', '#7fd1b9');
+  return { ok: true };
 }
 
 /** Clears a burnt slot into the ink bin. */
@@ -242,7 +247,7 @@ export function useStation(state, stationId, slotIndex = null) {
   const burnt = slots.find((i) => st.slots[i]?.phase === 'burnt');
   if (burnt !== undefined) {
     clearBurnt(state, stationId, burnt);
-    return { ok: true, info: 'Burnt food binned' };
+    return { ok: true };
   }
   const ready = slots.find((i) => isUsable(st.slots[i]));
   if (ready !== undefined) return takeFromStation(state, stationId, ready);

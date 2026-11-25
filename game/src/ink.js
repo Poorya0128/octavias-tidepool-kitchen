@@ -33,7 +33,7 @@ export function fireInkBurst(state) {
   ink.meter = 0;
   ink.uses++;
   state.emit({ type: 'inkBurst', ...LAYOUT.octavia });
-  return { ok: true, info: 'Ink Burst!' };
+  return { ok: true };
 }
 
 /** Ends the burst once its time is up. */

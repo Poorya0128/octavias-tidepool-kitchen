@@ -183,7 +183,7 @@ export function finishPlate(state) {
   state.emit({ type: 'finish', ...PLATE_POINT, recipe: recipe.id, word: recipe.finish });
   plate.recipeId = null;
   plate.parts = [];
-  return { ok: true, info: `${recipe.finish}!` };
+  return { ok: true };
 }
 
 /** Plates on the pass cool down; a cold plate loses its perfect tips. */
@@ -264,23 +264,23 @@ export function trash(state, clearBurnt) {
     state.emit({ type: 'trash', ...ARM_HOLD[held.id], ing: held.item.ing });
     releaseArm(state, held);
     sendArm(state, held, jar);
-    return { ok: true, info: 'Binned' };
+    return { ok: true };
   }
   for (const [id, st] of Object.entries(state.stations)) {
     const i = st.slots.findIndex((s) => s?.phase === 'burnt');
-    if (i >= 0 && clearBurnt(state, id, i)) return { ok: true, info: 'Burnt food binned' };
+    if (i >= 0 && clearBurnt(state, id, i)) return { ok: true };
   }
   if (state.plate.parts.length) {
     state.emit({ type: 'trash', ...PLATE_POINT });
     state.plate.parts = [];
     state.plate.recipeId = null;
-    return { ok: true, info: 'Plate cleared' };
+    return { ok: true };
   }
   const stray = state.pass.findIndex((p) => !ticketForPlate(state, p));
   if (stray >= 0) {
     state.emit({ type: 'trash', ...slotPoint(stray) });
     state.pass.splice(stray, 1);
-    return { ok: true, info: 'Unwanted plate binned' };
+    return { ok: true };
   }
   return { ok: false, reason: 'Nothing to bin' };
 }

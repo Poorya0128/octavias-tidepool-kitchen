@@ -5,7 +5,7 @@
  */
 
 import { LAYOUT, PALETTE } from '../config.js';
-import { ARM_REST, ARM_ROOTS } from '../arms.js';
+import { ARM_HOLD, ARM_REST, ARM_ROOTS } from '../arms.js';
 import { patienceShare } from '../orders.js';
 import { blob, sparkle, TAU } from './draw.js';
 import { drawFinishedDish, drawIngredient } from './food.js';
@@ -74,61 +74,129 @@ function trace(ctx, pts, from = 0, to = pts.length - 1) {
   for (let k = from + 1; k <= to; k++) ctx.lineTo(pts[k].x, pts[k].y);
 }
 
-/** One tentacle from its root to its tip: tapering, darker underneath, with a row of suckers. */
-function drawTentacle(ctx, root, tip, i, t) {
+/** Winds an outward spiral onto the end of an arm's centre line; `curl` 0..1 sets how far. */
+function curlTip(pts, side, curl) {
+  const a = pts[pts.length - 2];
+  let { x, y } = pts[pts.length - 1];
+  let heading = Math.atan2(y - a.y, x - a.x);
+  for (let k = 1; k <= 12; k++) {
+    heading -= side * curl * (0.14 + 0.035 * k);
+    const step = 4.2 - 0.18 * k;
+    x += Math.cos(heading) * step;
+    y += Math.sin(heading) * step;
+    pts.push({ x, y });
+  }
+}
+
+/**
+ * An arm's centre line: a cubic from root to tip that sags on short arms and, on long reaches,
+ * bows up over the counter to come down onto the target, with a slow S-wave travelling along it.
+ * Returns the points and how many belong to the reach (a curled tip adds more after them).
+ */
+function armSpine(root, tip, i, t, curl) {
   const side = i < 4 ? -1 : 1;
-  const c1 = { x: root.x + side * 12, y: root.y + 60 };
-  const c2 = { x: tip.x - (tip.x - root.x) * 0.2, y: tip.y - 46 + Math.sin(t * 2 + i) * 6 };
-  const n = 22;
-  const pts = [];
-  for (let k = 0; k <= n; k++) pts.push(bez(root, c1, c2, tip, k / n));
+  const dx = tip.x - root.x;
+  const dy = tip.y - root.y;
+  const d = Math.hypot(dx, dy) || 1;
+  const long = Math.min(1, Math.max(0, (d - 120) / 260));
+  const bow = long * Math.min(120, d * 0.3) * (Math.abs(dx) / d);
+  const c1 = { x: root.x + dx * 0.3 + side * 12 * (1 - long), y: root.y + 50 * (1 - long) + dy * 0.1 - bow * 0.35 };
+  const c2 = { x: tip.x - dx * 0.28, y: tip.y - 36 - bow * 1.25 + Math.sin(t * 2 + i) * 5 };
+  const n = 20 + Math.round(16 * long);
+  const raw = [];
+  for (let k = 0; k <= n; k++) raw.push(bez(root, c1, c2, tip, k / n));
+  const amp = Math.min(12, d * 0.045);
+  const pts = raw.map((p, k) => {
+    const a = raw[Math.max(0, k - 1)];
+    const b = raw[Math.min(n, k + 1)];
+    const len = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+    const off = amp * Math.sin((Math.PI * k) / n) * Math.sin((TAU * k) / n - t * 2.2 + i * 1.3);
+    return { x: p.x - ((b.y - a.y) / len) * off, y: p.y + ((b.x - a.x) / len) * off };
+  });
+  if (curl > 0.02) curlTip(pts, side, curl);
+  return { pts, n };
+}
+
+/**
+ * One tentacle from its root to its tip along armSpine: a soft shadow, thick at the root and
+ * tapering to a point, a darker underside with suckers that follow the curve, a sheen on top and,
+ * when `curl` > 0, a curled tip.
+ */
+function drawTentacle(ctx, root, tip, i, t, curl = 0) {
+  const side = i < 4 ? -1 : 1;
+  const { pts, n } = armSpine(root, tip, i, t, curl);
+  const last = pts.length - 1;
+  const taper = 1.2 - Math.min(0.45, Math.max(0, (n - 20) / 36));
+  const width = (k) => (k <= n ? 3.8 + 10.2 * (1 - k / n) ** taper : 3.8 - (2.2 * (k - n)) / (last - n));
   const left = [];
   const right = [];
   let lean = 0;
-  for (let k = 0; k <= n; k++) {
+  for (let k = 0; k <= last; k++) {
     const a = pts[Math.max(0, k - 1)];
-    const b = pts[Math.min(n, k + 1)];
+    const b = pts[Math.min(last, k + 1)];
     const len = Math.hypot(b.x - a.x, b.y - a.y) || 1;
-    const w = 15 - (k / n) * 10.5;
+    const w = width(k);
     const nx = (-(b.y - a.y) / len) * w;
     const ny = ((b.x - a.x) / len) * w;
     left.push({ x: pts[k].x + nx, y: pts[k].y + ny });
     right.push({ x: pts[k].x - nx, y: pts[k].y - ny });
-    lean += ny;
+    if (k <= n) lean += ny;
   }
-  const under = lean > 0 ? left : right;
-  const over = lean > 0 ? right : left;
+  const underLeft = curl > 0.3 ? side < 0 : lean > 0;
+  const under = underLeft ? left : right;
+  const over = underLeft ? right : left;
+  const heading = Math.atan2(pts[last].y - pts[last - 1].y, pts[last].x - pts[last - 1].x);
   const body = new Path2D();
   body.moveTo(left[0].x, left[0].y);
   for (const p of left) body.lineTo(p.x, p.y);
-  body.arc(tip.x, tip.y, 4.5, 0, TAU);
-  for (let k = n; k >= 0; k--) body.lineTo(right[k].x, right[k].y);
+  body.arc(pts[last].x, pts[last].y, width(last), heading + Math.PI / 2, heading - Math.PI / 2, true);
+  for (let k = last; k >= 0; k--) body.lineTo(right[k].x, right[k].y);
   body.closePath();
+  ctx.save();
+  ctx.translate(5, 8);
+  ctx.fillStyle = 'rgba(4,22,26,0.2)';
+  ctx.fill(body);
+  ctx.restore();
   ctx.fillStyle = SKIN;
   ctx.fill(body);
   ctx.beginPath();
   trace(ctx, pts.map((p, k) => mix(p, under[k], 0.12)));
-  for (let k = n; k >= 0; k--) ctx.lineTo(under[k].x, under[k].y);
+  for (let k = last; k >= 0; k--) ctx.lineTo(under[k].x, under[k].y);
   ctx.closePath();
   ctx.fillStyle = UNDERSIDE;
   ctx.fill();
+  let sheen = 1;
+  while (sheen < last && width(sheen) > 5.5) sheen++;
   ctx.beginPath();
-  trace(ctx, pts.map((p, k) => mix(p, over[k], 0.5)), 1, n - 5);
+  trace(ctx, pts.map((p, k) => mix(p, over[k], 0.5)), 1, sheen);
   ctx.strokeStyle = 'rgba(255,224,212,0.85)';
   ctx.lineWidth = 3;
   ctx.lineCap = 'round';
   ctx.stroke();
   ctx.lineCap = 'butt';
-  ctx.lineWidth = 3;
+  ctx.lineWidth = 2.8;
   ctx.lineJoin = 'round';
   ctx.strokeStyle = INK;
   ctx.stroke(body);
-  for (let k = 3; k < n; k += 2) {
-    const p = mix(pts[k], under[k], 0.55);
-    const r = (15 - (k / n) * 10.5) * 0.3;
-    blob(ctx, p.x, p.y, r, SUCKER, 'rgba(59,42,77,0.5)', 1.2);
-    blob(ctx, p.x, p.y, r * 0.45, '#f3a493', null);
+  let run = 0;
+  let next = 24;
+  for (let k = 1; k < last; k++) {
+    run += Math.hypot(pts[k].x - pts[k - 1].x, pts[k].y - pts[k - 1].y);
+    if (run < next) continue;
+    const w = width(k);
+    if (w < 2.6) break;
+    const p = mix(pts[k], under[k], 0.56);
+    blob(ctx, p.x, p.y, w * 0.34, SUCKER, 'rgba(59,42,77,0.5)', 1.2);
+    blob(ctx, p.x, p.y, w * 0.15, '#f3a493', null);
+    next = run + Math.max(5, w * 1.2);
   }
+}
+
+/** How far an arm's tip curls: fully once it rests or lifts its item, not while it reaches or works. */
+function curlOf(arm, tip) {
+  if (arm.state !== 'idle' && arm.state !== 'hold') return 0;
+  const home = arm.state === 'idle' ? ARM_REST[arm.id] : ARM_HOLD[arm.id];
+  return Math.max(0, 1 - Math.hypot(tip.x - home.x, tip.y - home.y) / 90);
 }
 
 /** A tiny shell knife for the chopping arm. */
@@ -500,7 +568,7 @@ export function drawOctaviaPortrait(ctx, x, y, scale, t, pose = 'wave') {
   }
   drawBody(ctx, { x: o.x, y: o.y + 60 }, t, pose === 'bow' ? 'bow' : 'joy');
   ctx.restore();
-  ARM_ROOTS.forEach((root, i) => drawTentacle(ctx, root, tips[i], i, t));
+  ARM_ROOTS.forEach((root, i) => drawTentacle(ctx, root, tips[i], i, t, 1));
   drawKerchief(ctx, o.x, hy);
   if (pose === 'hero') {
     ctx.save();
@@ -529,7 +597,7 @@ export function drawOctavia(ctx, state, view, t) {
   if (mood === 'dazzled') drawInkAura(ctx, x, y, t);
   drawBody(ctx, look, t, mood);
   const order = state.arms.map((a, i) => i).sort((a, b) => view[a].y - view[b].y);
-  for (const i of order) drawTentacle(ctx, ARM_ROOTS[i], view[i], i, t);
+  for (const i of order) drawTentacle(ctx, ARM_ROOTS[i], view[i], i, t, curlOf(state.arms[i], view[i]));
   drawKerchief(ctx, x, y);
   for (const i of order) {
     const arm = state.arms[i];

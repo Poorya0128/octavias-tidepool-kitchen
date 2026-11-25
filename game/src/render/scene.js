@@ -13,7 +13,7 @@ import { cookProgress, isStirred, windowLeft } from '../stations.js';
 import { patienceShare, slotPoint, ticketForPlate } from '../orders.js';
 import { blob, font, keycap, label, oval, panel, ring, roundRect, sparkle, TAU, text } from './draw.js';
 import { drawDish, drawFinishedDish, drawIngredient } from './food.js';
-import { drawWindowDiners } from './customers.js';
+import { drawWindowDiners, drawWindowSpeech } from './customers.js';
 import { contactShadow, drawCached, drawCaustics, glow, moodFor, MOODS, puff, verticalGradient } from './light.js';
 
 const INK = PALETTE.ink;
@@ -68,7 +68,7 @@ function paintWall(c, mood) {
       c.fill();
       const pick = (row * 7 + col * 3) % 11;
       if (pick < 3) {
-        c.globalAlpha = 0.17;
+        c.globalAlpha = mood.accent ?? 0.17;
         c.fillStyle = mood.tiles[pick];
         c.fill();
         c.globalAlpha = 1;
@@ -91,7 +91,44 @@ function paintWall(c, mood) {
   shadeBand(c, bottom - 80, bottom, 0, 0.55);
   paintPortholeFrame(c);
   paintShelf(c);
-  paintGarland(c);
+  if (mood.king) paintBunting(c);
+  else paintGarland(c);
+}
+
+/** King Tide's festive bunting in place of the garland: gold cords swagging above the shelf, hung with pennants. */
+function paintBunting(c) {
+  const colors = ['#8a4fd6', '#ffd166', '#ff7a59', '#fff6e6'];
+  for (const [x0, x1] of [[150, 432], [432, 716]]) {
+    const sag = (x) => 160 + 22 * Math.sin(((x - x0) / (x1 - x0)) * Math.PI);
+    for (const [w, col] of [[5, INK], [2.5, '#ffe2a0']]) {
+      c.beginPath();
+      for (let x = x0; x <= x1; x += 6) c.lineTo(x, sag(x));
+      c.lineWidth = w;
+      c.strokeStyle = col;
+      c.stroke();
+    }
+    for (let x = x0 + 18, k = 0; x < x1 - 10; x += 27, k++) {
+      c.save();
+      c.translate(x, sag(x));
+      c.rotate(Math.atan(sag(x + 1) - sag(x)));
+      c.beginPath();
+      c.moveTo(-10, 0);
+      c.lineTo(10, 0);
+      c.lineTo(0, 24);
+      c.closePath();
+      c.fillStyle = colors[(k + (x0 > 300 ? 2 : 0)) % 4];
+      c.fill();
+      outline(c, 2);
+      c.fillStyle = 'rgba(255,255,255,0.4)';
+      c.beginPath();
+      c.moveTo(-7, 2);
+      c.lineTo(-2, 2);
+      c.lineTo(-1, 14);
+      c.closePath();
+      c.fill();
+      c.restore();
+    }
+  }
 }
 
 /** The porthole's brass ring and bolts, with its shadow on the wall. */
@@ -240,9 +277,11 @@ function drawPorthole(ctx, mood, t, calm) {
   ctx.clip();
   ctx.fillStyle = verticalGradient(ctx, y - r, y + r, mood.sea);
   ctx.fillRect(x - r, y - r, r * 2, r * 2);
-  if (mood.bio) {
-    glow(ctx, x + 24, y - 30, 44, '200,210,255', 0.55);
-    blob(ctx, x + 24, y - 30, 13, '#f1efff', null);
+  if (mood.moon) {
+    glow(ctx, x + 24, y - 30, 50, '200,210,255', 0.7);
+    blob(ctx, x + 24, y - 30, 14, '#f4f2ff', null);
+    blob(ctx, x + 19, y - 33, 3, 'rgba(170,170,220,0.6)', null);
+    blob(ctx, x + 29, y - 25, 2, 'rgba(170,170,220,0.6)', null);
   }
   ctx.fillStyle = 'rgba(255,255,255,0.12)';
   for (let i = 0; i < 3; i++) {
@@ -276,16 +315,27 @@ function drawPorthole(ctx, mood, t, calm) {
     ctx.stroke();
   }
   if (mood.storm) {
-    ctx.strokeStyle = 'rgba(210,235,240,0.35)';
+    ctx.strokeStyle = 'rgba(210,235,240,0.5)';
     ctx.lineWidth = 1.5;
     ctx.beginPath();
-    for (let i = 0; i < 14; i++) {
+    for (let i = 0; i < 18; i++) {
       const rx = x - r + ((i * 37 + t * 140) % (r * 2 + 30));
       const ry = y - r + ((i * 53 + t * 260) % (r * 2));
       ctx.moveTo(rx, ry);
-      ctx.lineTo(rx - 6, ry + 16);
+      ctx.lineTo(rx - 7, ry + 20);
     }
     ctx.stroke();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = 'rgba(225,244,250,0.35)';
+    for (let i = 0; i < 7; i++) {
+      const dx = x - r + 16 + ((i * 41) % (r * 2 - 32));
+      const dy = y - r + ((i * 67 + t * (24 + i * 5)) % (r * 2 + 24)) - 12;
+      ctx.beginPath();
+      ctx.moveTo(dx + Math.sin(dy * 0.2) * 1.5, dy - 22);
+      ctx.lineTo(dx, dy);
+      ctx.stroke();
+      blob(ctx, dx, dy, 2.8, 'rgba(236,250,255,0.8)', 'rgba(10,30,40,0.35)', 1);
+    }
     const f = calm ? 0 : stormFlash(t);
     if (f > 0) {
       ctx.fillStyle = `rgba(220,240,255,${f * 0.6})`;
@@ -464,6 +514,10 @@ export function drawCounter(ctx) {
   const top = LAYOUT.counterTop;
   drawCached(ctx, 'counter', 0, top, 1280, 800 - top, paintCounter);
   const { mood, t, calm } = frame;
+  if (mood.counter) {
+    ctx.fillStyle = `rgba(${mood.counter})`;
+    ctx.fillRect(0, top, 1280, LAYOUT.counterBottom - top);
+  }
   drawCaustics(ctx, { x: 0, y: top + 4, w: 1280, h: LAYOUT.counterBottom - top - 20 }, mood.caustic, mood.caustics * 0.75, calm ? 0 : t, 0.45);
 }
 
@@ -496,6 +550,26 @@ function wisps(ctx, x, y, t, n = 2, height = 44) {
     ctx.stroke();
   }
   ctx.lineCap = 'butt';
+}
+
+/** A twinkling highlight that makes plated food look glossy and fresh. */
+function glint(ctx, x, y, t) {
+  const tw = frame.calm ? 0.6 : 0.5 + 0.5 * Math.sin(t * 3.1 + x);
+  ctx.globalAlpha = 0.55 + tw * 0.45;
+  sparkle(ctx, x, y, 3.5 + tw * 3.5, '#fffbe6');
+  ctx.globalAlpha = 1;
+}
+
+/** Hot oil popping off sizzling food: bright droplets arcing up and falling back under a little smoke. */
+function sizzle(ctx, x, y, t) {
+  steam(ctx, x, y - 8, t, 2, 8, 36, 0.22);
+  for (let k = 0; k < 8; k++) {
+    const p = (t * 1.7 + k / 8) % 1;
+    const dx = (k % 2 ? 1 : -1) * (10 + ((k * 7) % 18)) * p;
+    const dy = Math.sin(p * Math.PI) * (16 + (k % 3) * 10);
+    glow(ctx, x + dx, y - 10 - dy, 6, '255,170,80', 0.5 * (1 - p));
+    blob(ctx, x + dx, y - 10 - dy, 2.2, `rgba(255,240,190,${1 - p * p})`, null);
+  }
 }
 
 /** Dark smoke curling up from burnt food. */
@@ -698,10 +772,7 @@ function drawBoard(ctx, state, t) {
   if (item) {
     slotFood(ctx, item, at.x, at.y - 6 - (chopping ? Math.abs(Math.sin(t * 14)) * 3 : 0), 44, t);
     if (chopping) choppedBits(ctx, item.ing, at.x, at.y - 8, t);
-    cookRing(ctx, item, at.x + 62, at.y - 22, t, 16);
   }
-  if (item && !worker) text(ctx, 'needs an arm', at.x, at.y + 28, { size: 13, color: PALETTE.gold, align: 'center', line: 3 });
-  stationLabel(ctx, 'SHELL BOARD', 'Q', cx, st.y + 84);
 }
 
 /** The colour of a pot's contents as it cooks; an empty pot holds clear water. */
@@ -734,6 +805,18 @@ function drawBroth(ctx, item, cx, y, t) {
   ctx.beginPath();
   ctx.ellipse(cx, y - 3, rx, ry, 0, Math.PI, 0);
   ctx.stroke();
+  if (item && item.phase !== 'burnt') {
+    const turn = frame.calm ? 0 : t * 1.8;
+    ctx.lineWidth = 3;
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = 'rgba(176,120,64,0.45)';
+    for (const r of [28, 14]) {
+      ctx.beginPath();
+      ctx.ellipse(cx, y + 1, r, r * 0.18, 0, turn + r, turn + r + 3.4);
+      ctx.stroke();
+    }
+    ctx.lineCap = 'butt';
+  }
   if (item?.phase !== 'burnt') {
     const speed = (!item ? 0.35 : item.phase === 'cook' ? 0.9 : 1.7) * (frame.calm ? 0.3 : 1);
     for (let k = 0; k < (item ? 7 : 3); k++) {
@@ -845,12 +928,7 @@ function drawPot(ctx, state, id, t) {
       wisps(ctx, cx + 4, st.y + 34, t, 2, 46);
     }
     if (item.phase === 'perfect') twinkles(ctx, cx, st.y + 40, 70, t);
-    if (item.phase !== 'cook' && !isStirred(state, id) && item.phase !== 'burnt') {
-      text(ctx, 'STIR ME!', cx, st.y + 96, { size: 14, color: PALETTE.orange, align: 'center', line: 4 });
-    }
-    cookRing(ctx, item, st.x + 4, st.y + 24, t, 17);
   }
-  stationLabel(ctx, id === 'pot0' ? 'BUBBLE POT' : 'POT 2', 'W', cx, base + 14);
 }
 
 /** Magma cracks in the Vent Grill rock, as offsets from the station's corner. */
@@ -930,10 +1008,9 @@ function drawGrill(ctx, state, t) {
   }
   slots.forEach((item, i) => {
     const at = SLOT_TARGETS.grill[i];
-    slotFood(ctx, item, at.x, at.y - 20, 42, t);
-    if (item) cookRing(ctx, item, at.x, at.y - 46, t, 15);
+    slotFood(ctx, item, at.x, at.y - 15, 50, t);
+    if (item && item.phase !== 'burnt' && !frame.calm) sizzle(ctx, at.x, at.y - 18, t + i * 0.4);
   });
-  stationLabel(ctx, 'VENT GRILL', 'E', cx, st.y + st.h + 2);
 }
 
 /** One woven steamer basket with a window onto its food. */
@@ -966,7 +1043,6 @@ function drawBasket(ctx, st, y, item, at, t) {
   ctx.stroke();
   slotFood(ctx, item, at.x - 14, at.y - 3, 42, t);
   if (item && item.phase !== 'burnt') puff(ctx, at.x - 14 + Math.sin(t * 0.8) * 10, at.y - 12, 40, '255,255,255', 0.2, 22);
-  if (item) cookRing(ctx, item, at.x + 44, at.y - 22, t, 15);
 }
 
 /** The Kelp Steamer: two woven baskets stacked under a lid that rattles and puffs steam. */
@@ -1018,7 +1094,6 @@ function drawSteamer(ctx, state, t) {
     steam(ctx, st.x + 20, st.y + 26, t + 0.4, 2, 8, 40, 0.3);
     steam(ctx, st.x + st.w - 20, st.y + 26, t + 1.1, 2, 8, 40, 0.3);
   }
-  stationLabel(ctx, 'KELP STEAMER', 'R', cx, st.y + st.h + 12);
 }
 
 /** Every station, back to front, over the soft shadows that ground them and Octavia. */
@@ -1093,9 +1168,9 @@ export function drawClamPlate(ctx, state, t) {
   drawCached(ctx, 'clamLid', x - w / 2 - 4, y - 96, w + 8, 96, (c) => paintClamLid(c, w / 2 + 4, 96, w));
   if (plate.recipeId) glow(ctx, x, y - 14, w * 0.62, '255,214,120', 0.3 + pulse * 0.2, 54);
   const base = ctx.createLinearGradient(0, y - 24, 0, y + 36);
-  base.addColorStop(0, '#d6fff1');
-  base.addColorStop(0.5, '#8fd8c3');
-  base.addColorStop(1, '#4a9a87');
+  base.addColorStop(0, '#f8f0ff');
+  base.addColorStop(0.5, '#c4b0f0');
+  base.addColorStop(1, '#6f58b8');
   oval(ctx, x, y + 6, w / 2 + 6, 30, base, INK, 3);
   ctx.lineWidth = 2;
   ctx.strokeStyle = 'rgba(255,255,255,0.65)';
@@ -1104,6 +1179,8 @@ export function drawClamPlate(ctx, state, t) {
   ctx.stroke();
   if (plate.recipeId) {
     drawDish(ctx, plate.recipeId, x, y - 4, 214, plate.parts, false);
+    if (plate.parts.some((part) => part.prep !== 'raw' && part.prep !== 'chop')) wisps(ctx, x - 8, y - 36, t, 3, 46);
+    glint(ctx, x - 44, y - 22, t);
   } else {
     label(ctx, 'Hold food, then press Space', x, y + 10, 13, 'rgba(59,42,77,0.75)', 'center', 800);
   }
@@ -1219,21 +1296,53 @@ function paintPassFrame(c) {
   label(c, 'CURRENT WINDOW', p.x + p.w / 2, p.y + 27, 14, INK, 'center', 900);
 }
 
-/** A wooden ledge in the hatch that a plate rests on. */
-function drawLedge(ctx, rect, y) {
-  contactShadow(ctx, rect.x + rect.w / 2, y + 12, rect.w * 0.6, 7, 0.5);
-  const wood = ctx.createLinearGradient(0, y, 0, y + 9);
-  wood.addColorStop(0, '#c18a52');
-  wood.addColorStop(1, '#7a5030');
-  ctx.fillStyle = wood;
-  ctx.fillRect(rect.x, y, rect.w, 9);
+/** A wooden shelf across the hatch from y: its top is the ledge a plate rests on, its front carries that plate's labels. */
+function drawShelf(ctx, rect, y) {
+  ctx.fillStyle = cachedGradient(ctx, 'shelf', () => {
+    const g = ctx.createLinearGradient(0, 0, 0, 44);
+    g.addColorStop(0, '#d39a5e');
+    g.addColorStop(0.13, '#9a6a40');
+    g.addColorStop(0.16, '#5e3b22');
+    g.addColorStop(1, '#43291a');
+    return g;
+  });
+  ctx.save();
+  ctx.translate(0, y);
+  ctx.fillRect(rect.x, 0, rect.w, 44);
+  ctx.fillStyle = 'rgba(255,240,206,0.7)';
+  ctx.fillRect(rect.x, 0, rect.w, 1.5);
   ctx.fillStyle = INK;
-  ctx.fillRect(rect.x, y + 9, rect.w, 2);
-  ctx.fillStyle = 'rgba(255,240,206,0.55)';
-  ctx.fillRect(rect.x, y, rect.w, 1.5);
+  ctx.fillRect(rect.x, 6, rect.w, 1.5);
+  ctx.fillRect(rect.x, 42, rect.w, 2);
+  ctx.restore();
 }
 
-/** The Current Window: a serving hatch onto the reef, diners outside, finished plates glowing on its ledges. */
+/** The red ORDER UP! ribbon pinned to the hatch frame's top-left corner at (x, y), its tail flapping toward the kitchen. */
+function orderUpRibbon(ctx, x, y, t) {
+  const w = 100;
+  const h = 23;
+  const flap = frame.calm ? 0 : Math.sin(t * 3.2) * 2;
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(-0.05);
+  ctx.beginPath();
+  ctx.moveTo(4, 0);
+  ctx.lineTo(-w, flap);
+  ctx.lineTo(-w + 12, h / 2 + flap);
+  ctx.lineTo(-w, h + flap);
+  ctx.lineTo(4, h);
+  ctx.closePath();
+  ctx.fillStyle = verticalGradient(ctx, 0, h, ['#ff8f74', '#e2412f', '#a3241b']);
+  ctx.fill();
+  outline(ctx, 2.5);
+  ctx.fillStyle = 'rgba(255,236,220,0.45)';
+  ctx.fillRect(-w + 12, 3 + flap * 0.6, w - 10, 2);
+  text(ctx, 'ORDER UP!', -w / 2 + 4, h / 2 + 5, { size: 14, color: PALETTE.gold, align: 'center', line: 3.5 });
+  blob(ctx, -3, h / 2, 4, '#f4d8a6', INK, 1.5);
+  ctx.restore();
+}
+
+/** The Current Window: a hatch onto the reef with diners behind their plates, each plate's labels on its shelf, an ORDER UP! ribbon and the front diner's voice. */
 export function drawPass(ctx, state, t) {
   const p = LAYOUT.pass;
   const mood = frame.mood;
@@ -1257,44 +1366,46 @@ export function drawPass(ctx, state, t) {
   }
   drawWindowDiners(ctx, state, t, rect);
   const slots = state.upgrades.biggerPlate ? TUNING.biggerPassSlots : TUNING.passSlots;
-  for (let i = 0; i < slots; i++) drawLedge(ctx, rect, slotPoint(i).y + 22);
+  for (let i = 0; i < slots; i++) drawShelf(ctx, rect, slotPoint(i).y + 20);
   ctx.restore();
+  let orderUp = false;
   for (let i = 0; i < slots; i++) {
     const { x, y } = slotPoint(i);
     const plate = state.pass[i];
     if (!plate) {
-      oval(ctx, x, y + 12, 58, 12, 'rgba(255,246,230,0.1)', 'rgba(255,246,230,0.4)', 2);
-      text(ctx, 'empty', x, y + 17, { size: 13, color: 'rgba(255,246,230,0.75)', align: 'center', line: 3 });
+      oval(ctx, x, y + 10, 58, 12, 'rgba(255,246,230,0.1)', 'rgba(255,246,230,0.4)', 2);
+      text(ctx, 'empty', x, y + 46, { size: 13, color: 'rgba(255,246,230,0.6)', align: 'center', line: 3 });
       continue;
     }
+    const front = i === 0;
     const pulse = calm ? 0.5 : 0.5 + 0.5 * Math.sin(t * 4 + i);
     const ticket = ticketForPlate(state, plate);
-    glow(ctx, x, y - 6, 104, '255,190,90', 0.32 + pulse * 0.25, 62);
-    drawFinishedDish(ctx, plate.recipeId, x, y - 4, 150);
+    orderUp ||= front && !!ticket;
+    glow(ctx, x, y - 2, front ? 100 : 86, '255,190,90', 0.24 + pulse * 0.2, 40);
+    drawFinishedDish(ctx, plate.recipeId, x, y - 4, front ? 150 : 134);
     steam(ctx, x - 18, y - 24, t + i, 3, 8, 50, 0.4);
     wisps(ctx, x - 6, y - 26, t + i * 0.37, 3, 40);
-    if (i === 0 && ticket) text(ctx, 'ORDER UP!', rect.x + 8, y - 46, { size: 13, color: PALETTE.gold, line: 4 });
-    text(ctx, RECIPE[plate.recipeId].name, x, y + 43, { size: 14, color: PALETTE.pearl, align: 'center', line: 4, maxWidth: p.w - 20 });
+    glint(ctx, x - 34, y - 18, t + i);
+    text(ctx, RECIPE[plate.recipeId].name, x, y + 40, { size: 13, color: PALETTE.pearl, align: 'center', line: 3, maxWidth: rect.w - 12 });
     const warm = plate.warmth / plate.maxWarmth;
-    ctx.fillStyle = 'rgba(5,25,29,0.7)';
-    roundRect(ctx, p.x + 18, y + 48, p.w - 56, 7, 3.5);
+    ctx.fillStyle = 'rgba(5,25,29,0.75)';
+    roundRect(ctx, rect.x + 10, y + 44, rect.w - 20, 5, 2.5);
     ctx.fill();
     ctx.fillStyle = warm > 0.35 ? PALETTE.coral : '#9fc7d6';
-    roundRect(ctx, p.x + 18, y + 48, (p.w - 56) * warm, 7, 3.5);
+    roundRect(ctx, rect.x + 10, y + 44, (rect.w - 20) * warm, 5, 2.5);
     ctx.fill();
-    const dest = ticket ? `${CUSTOMERS[ticket.customerId].name} #${ticket.id}` : 'nobody ordered';
-    if (i === 0 && ticket) {
-      keycap(ctx, 'S', p.x + 22, y + 66, { size: 13, fill: PALETTE.gold });
-      text(ctx, `serve to ${dest}`, p.x + 36, y + 71, { size: 13, color: PALETTE.pearl, line: 3, maxWidth: p.w - 42 });
-    } else {
-      text(ctx, ticket ? `for ${dest}` : dest, x, y + 71, { size: 13, color: ticket ? PALETTE.pearl : PALETTE.orange, align: 'center', line: 3, maxWidth: p.w - 16 });
-    }
+    const who = ticket ? `${CUSTOMERS[ticket.customerId].name.split(' ').pop()} #${ticket.id}` : 'nobody ordered';
+    if (front && ticket) keycap(ctx, 'S', rect.x + 14, y + 57, { size: 11, fill: PALETTE.gold });
+    const line = !ticket ? who : front ? `serve to ${who}` : `for ${who}`;
+    text(ctx, line, rect.x + 26, y + 61, { size: 12, color: ticket ? PALETTE.pearl : PALETTE.orange, line: 3, maxWidth: rect.w - 50 });
     if (ticket) {
       const share = patienceShare(ticket);
-      blob(ctx, p.x + p.w - 24, y + 51, 11, 'rgba(5,25,29,0.8)', null);
-      ring(ctx, p.x + p.w - 24, y + 51, 8, share, share > 0.5 ? PALETTE.green : share > 0.25 ? PALETTE.gold : PALETTE.red, 3.5);
+      blob(ctx, rect.x + rect.w - 13, y + 57, 9, 'rgba(5,25,29,0.85)', null);
+      ring(ctx, rect.x + rect.w - 13, y + 57, 6.5, share, share > 0.5 ? PALETTE.green : share > 0.25 ? PALETTE.gold : PALETTE.red, 3);
     }
   }
+  if (orderUp) orderUpRibbon(ctx, p.x + 16, p.y + 14, t);
+  drawWindowSpeech(ctx, state, rect);
 }
 
 /** Paints one ingredient crate: food heaped above the rim, slatted front and a name tag with its hotkey. */
@@ -1413,14 +1524,55 @@ function drawSnow(ctx, mood, t) {
     ctx.arc(x, y, r, 0, TAU);
   }
   ctx.fill();
-  if (!mood.bio) return;
-  for (let i = 0; i < 18; i++) {
+  if (!mood.moon) return;
+  for (let i = 0; i < 30; i++) {
     const x = (i * 271.1 + Math.sin(t * 0.3 + i * 1.7) * 30 + 1280) % 1280;
     const y = 160 + ((i * 97.3 + t * (3 + (i % 3))) % 480);
     const pulse = 0.5 + 0.5 * Math.sin(t * 2 + i * 1.3);
-    const rgb = i % 3 ? '110,240,255' : '200,150,255';
-    glow(ctx, x, y, 12, rgb, 0.3 + pulse * 0.45);
-    blob(ctx, x, y, 1.6, `rgba(${rgb},0.95)`, null);
+    const rgb = i % 3 ? '110,240,255' : '210,150,255';
+    glow(ctx, x, y, 14, rgb, 0.35 + pulse * 0.5);
+    blob(ctx, x, y, 1.8, `rgba(${rgb},0.95)`, null);
+  }
+}
+
+/** Moon Tide's pale moonbeam slanting from the porthole down across the shelf and counter. */
+function drawMoonbeam(ctx, t) {
+  const { x, y } = LAYOUT.porthole;
+  ctx.fillStyle = cachedGradient(ctx, 'moonbeam', () => {
+    const g = ctx.createLinearGradient(x, y, x + 230, y + 380);
+    g.addColorStop(0, 'rgba(200,214,255,0.42)');
+    g.addColorStop(1, 'rgba(200,214,255,0)');
+    return g;
+  });
+  ctx.globalAlpha = 0.85 + 0.15 * Math.sin(t * 0.7);
+  ctx.beginPath();
+  ctx.moveTo(x - 46, y + 44);
+  ctx.lineTo(x + 52, y - 40);
+  ctx.lineTo(x + 470, y + 390);
+  ctx.lineTo(x + 150, y + 390);
+  ctx.closePath();
+  ctx.fill();
+  ctx.globalAlpha = 1;
+}
+
+/** King Tide's two golden spotlights sweeping in from the top corners, crossing over Octavia and pooling on the counter. */
+function drawSpotlights(ctx, t) {
+  ctx.fillStyle = cachedGradient(ctx, 'spot', () => {
+    const g = ctx.createLinearGradient(0, 0, 0, 640);
+    g.addColorStop(0, 'rgba(255,220,130,0.36)');
+    g.addColorStop(1, 'rgba(255,220,130,0.04)');
+    return g;
+  });
+  for (const [top, bottom, phase] of [[250, 820, 0], [1030, 460, 2.2]]) {
+    const bx = bottom + Math.sin(t * 0.5 + phase) * 46;
+    ctx.beginPath();
+    ctx.moveTo(top - 24, -20);
+    ctx.lineTo(top + 24, -20);
+    ctx.lineTo(bx + 120, 640);
+    ctx.lineTo(bx - 120, 640);
+    ctx.closePath();
+    ctx.fill();
+    glow(ctx, bx, 612, 160, '255,214,120', 0.22, 38);
   }
 }
 
@@ -1431,31 +1583,17 @@ export function drawAtmosphere(ctx, state, t, calm) {
   ctx.save();
   ctx.globalCompositeOperation = 'lighter';
   drawRays(ctx, mood, tt);
-  for (const b of BULBS) glow(ctx, b.x, b.y, 30, b.warm ? mood.lamp : '255,150,120', 0.4 + (calm ? 0 : 0.12 * Math.sin(t * 3 + b.x)));
+  if (!mood.king) for (const b of BULBS) glow(ctx, b.x, b.y, 30, b.warm ? mood.lamp : '255,150,120', 0.4 + (calm ? 0 : 0.12 * Math.sin(t * 3 + b.x)));
   for (const [x, , ing] of JARS) glow(ctx, x, 280, 30, ing === 'pearl' ? '127,240,255' : mood.lamp, ing === 'pearl' ? 0.45 : 0.16);
   const port = LAYOUT.porthole;
   glow(ctx, port.x, port.y, port.r * 2.2, mood.caustic, 0.12);
+  if (mood.moon) drawMoonbeam(ctx, tt);
+  if (mood.king) drawSpotlights(ctx, tt);
   if (mood.storm && !calm) {
     const f = stormFlash(t);
-    glow(ctx, port.x, port.y, 300, '200,230,255', f * 0.4);
-    ctx.fillStyle = `rgba(200,230,255,${f * 0.07})`;
+    glow(ctx, port.x, port.y, 340, '200,230,255', f * 0.4);
+    ctx.fillStyle = `rgba(200,230,255,${f * 0.12})`;
     ctx.fillRect(0, 0, 1280, 800);
-  }
-  if (mood.spot) {
-    ctx.fillStyle = cachedGradient(ctx, 'spot', () => {
-      const g = ctx.createLinearGradient(0, 0, 0, 640);
-      g.addColorStop(0, 'rgba(255,216,122,0.26)');
-      g.addColorStop(1, 'rgba(255,216,122,0.04)');
-      return g;
-    });
-    ctx.beginPath();
-    ctx.moveTo(590, -20);
-    ctx.lineTo(690, -20);
-    ctx.lineTo(830, 640);
-    ctx.lineTo(450, 640);
-    ctx.closePath();
-    ctx.fill();
-    glow(ctx, 640, 600, 240, '255,214,120', 0.22 + (calm ? 0 : 0.04 * Math.sin(t * 1.3)), 70);
   }
   ctx.restore();
   drawSnow(ctx, mood, tt);
@@ -1470,7 +1608,32 @@ export function drawAtmosphere(ctx, state, t, calm) {
   ctx.globalAlpha = 1;
 }
 
-/** Station dials and labels drawn above Octavia so her arms never hide cooking timers. */
+/** Each station's name plate and hotkey, the plate's drop below the station, and its dials' offset from each slot (dx, dy, radius). */
+const PLATES = {
+  board: { name: 'SHELL BOARD', key: 'Q', drop: -8, dial: [62, -22, 16] },
+  pot0: { name: 'BUBBLE POT', key: 'W', drop: 10, dial: [-60, -24, 17] },
+  pot1: { name: 'POT 2', key: 'W', drop: 10, dial: [-60, -24, 17] },
+  grill: { name: 'VENT GRILL', key: 'E', drop: 2, dial: [0, -54, 15] },
+  steamer: { name: 'KELP STEAMER', key: 'R', drop: 12, dial: [44, -22, 15] },
+};
+
+/** Timing dials with their PERFECT, FLIP! and STIR ME! tags, and the station name plates, drawn above Octavia so her arms never hide them. */
 export function drawStationOverlays(ctx, state, t) {
-  // Filled in by the v2 lighting pass.
+  for (const [id, { name, key, drop, dial }] of Object.entries(PLATES)) {
+    const station = state.stations[id];
+    if (!station || station.locked) continue;
+    const st = LAYOUT.stations[id];
+    station.slots.forEach((item, i) => {
+      const at = SLOT_TARGETS[id][i];
+      if (item) cookRing(ctx, item, at.x + dial[0], at.y + dial[1], t, dial[2]);
+    });
+    const item = station.slots[0];
+    if (id === 'board' && item && !state.arms.some((a) => a.state === 'chop')) {
+      text(ctx, 'needs an arm', st.target.x, st.target.y + 30, { size: 13, color: PALETTE.gold, align: 'center', line: 3 });
+    }
+    if (id.startsWith('pot') && item && item.phase !== 'cook' && item.phase !== 'burnt' && !isStirred(state, id)) {
+      text(ctx, 'STIR ME!', st.x + st.w / 2, st.y + 96, { size: 14, color: PALETTE.orange, align: 'center', line: 4 });
+    }
+    stationLabel(ctx, name, key, st.x + st.w / 2, st.y + st.h + drop);
+  }
 }

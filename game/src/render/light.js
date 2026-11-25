@@ -4,22 +4,23 @@
  */
 
 /**
- * The light of each tide night, by night index: wall gradient, tile accents and grout, the sea
- * in the porthole and the reef seen through the Current Window, and the colours ('r,g,b') and strengths of god rays,
- * caustics, lamps and marine snow. `bio` adds glowing plankton, `storm` lightning, `spot` a
- * golden spotlight on Octavia.
+ * The light of each tide night, by night index: wall gradient, tile accents (and how strongly
+ * they show) and grout, the sea in the porthole and the reef seen through the Current Window, a
+ * wash over the counter ('r,g,b,a'), and the colours ('r,g,b') and strengths of god rays,
+ * caustics, lamps and marine snow. `moon` adds a moonbeam through the porthole and glowing
+ * plankton, `storm` rain and lightning, `king` festive bunting and crossing golden spotlights.
  */
 export const MOODS = [
-  { wall: ['#0c4c55', '#1d8086'], tiles: ['#53c9b9', '#ffa47f', '#effff8'], grout: '#063038', sea: ['#7fe3f0', '#148aa8'], reef: ['#9beef5', '#2a9cb4'],
-    ray: '255,246,206', rays: 0.13, caustic: '196,255,244', caustics: 0.2, lamp: '255,206,130', snow: '236,255,250', vignette: 0.4 },
-  { wall: ['#33324f', '#8c5a5c'], tiles: ['#ff8a6b', '#ffc49a', '#5fb3b0'], grout: '#1e1a2c', sea: ['#ffd08a', '#ff8a70', '#5a3f86'], reef: ['#ffd4a8', '#ff9c84', '#6a5296'],
-    ray: '255,178,128', rays: 0.15, caustic: '255,206,176', caustics: 0.16, lamp: '255,176,104', snow: '255,226,210', vignette: 0.45 },
-  { wall: ['#12173a', '#2b2d6c'], tiles: ['#8a7bff', '#5fe6ff', '#d9d4ff'], grout: '#090b22', sea: ['#323a8c', '#0b0e30'], reef: ['#4f5ab4', '#181d52'],
-    ray: '168,190,255', rays: 0.09, caustic: '150,206,255', caustics: 0.13, lamp: '120,236,255', snow: '170,232,255', vignette: 0.55, bio: true },
-  { wall: ['#062228', '#0f434a'], tiles: ['#2f948e', '#7aa3b0', '#c9735d'], grout: '#031418', sea: ['#2a5864', '#061c22'], reef: ['#4a8c96', '#163f48'],
-    ray: '190,228,236', rays: 0.07, caustic: '160,222,226', caustics: 0.11, lamp: '255,198,124', snow: '204,232,232', vignette: 0.55, storm: true },
-  { wall: ['#0f2f45', '#21586a'], tiles: ['#ffd36e', '#46ada2', '#fff1cc'], grout: '#08182a', sea: ['#ffd98a', '#2a6070'], reef: ['#ffe4a8', '#3a8292'],
-    ray: '255,216,122', rays: 0.15, caustic: '255,232,168', caustics: 0.18, lamp: '255,206,112', snow: '255,240,200', vignette: 0.5, spot: true },
+  { wall: ['#1b8d93', '#4cc9be'], tiles: ['#9af5e4', '#ffc39c', '#ffffff'], grout: '#0a5961', sea: ['#c6f8ff', '#38c2d6'], reef: ['#c8f7fa', '#47bccd'], counter: null,
+    ray: '255,252,226', rays: 0.2, caustic: '226,255,250', caustics: 0.28, lamp: '255,230,168', snow: '240,255,252', vignette: 0.22 },
+  { wall: ['#6b2f52', '#ea8f6c'], tiles: ['#ffb48c', '#ffe0a8', '#ff7f8e'], grout: '#3b1a30', sea: ['#ffd68c', '#ff8a70', '#7a3f86'], reef: ['#ffdcb2', '#ff9a82', '#7a5296'], counter: '255,120,90,0.14',
+    ray: '255,184,124', rays: 0.22, caustic: '255,214,176', caustics: 0.22, lamp: '255,170,100', snow: '255,228,204', vignette: 0.38 },
+  { wall: ['#080b34', '#28307e'], tiles: ['#7f8cff', '#5fe6ff', '#dcd8ff'], grout: '#03041a', accent: 0.22, sea: ['#2c3186', '#080a28'], reef: ['#4a4db2', '#141648'], counter: '46,34,140,0.34',
+    ray: '170,180,255', rays: 0.07, caustic: '160,190,255', caustics: 0.15, lamp: '150,226,255', snow: '190,214,255', vignette: 0.58, moon: true },
+  { wall: ['#06171b', '#1d3e44'], tiles: ['#2f6a68', '#5a7c86', '#8fa2a8'], grout: '#020b0e', sea: ['#23444c', '#040d10'], reef: ['#3d666e', '#0e262c'], counter: '20,48,56,0.4',
+    ray: '180,214,222', rays: 0.05, caustic: '150,200,206', caustics: 0.09, lamp: '255,190,120', snow: '200,226,230', vignette: 0.64, storm: true },
+  { wall: ['#2e0b4a', '#7a2f82'], tiles: ['#ffd36e', '#ffb347', '#ffe9a8'], grout: '#150520', accent: 0.5, sea: ['#ffdb8e', '#6a3a8a'], reef: ['#ffe2a4', '#7c4a9c'], counter: '120,40,130,0.14',
+    ray: '255,214,120', rays: 0.12, caustic: '255,228,160', caustics: 0.18, lamp: '255,206,112', snow: '255,236,190', vignette: 0.48, king: true },
 ];
 
 /** The mood of a night (Slack Tide when the night is unknown). */

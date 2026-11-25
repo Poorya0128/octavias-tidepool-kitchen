@@ -16,12 +16,13 @@ const BUYS = { 0: ['secondPot'], 1: ['calmingCoral'], 2: ['quickArms'] };
 
 /**
  * Service scenes: the night, the chef's style and the step where play freezes. The steps come
- * from a search for a frame with a plate at the window, a dish half built and food glowing.
+ * from a search for a frame with a plate at the window, a dish half built, food just turned
+ * PERFECT and at least four of Octavia's arms at work.
  */
 const PLAYS = {
-  cover: { night: 3, frames: 6289, chef: { cadence: 0.6, serveAfter: 14, focus: 3, takeWithin: 1.6 } },
-  moon: { night: 2, frames: 8352, chef: { cadence: 0.38, serveAfter: 14, focus: 3, takeWithin: 0.7 } },
-  critic: { night: 4, frames: 3278, chef: { cadence: 0.56, serveAfter: 10, focus: 3, takeWithin: 1.6 } },
+  cover: { night: 3, frames: 6730, chef: { cadence: 0.66, serveAfter: 16, focus: 4, takeWithin: 0.7 } },
+  moon: { night: 2, frames: 5202, chef: { cadence: 0.3, serveAfter: 12, focus: 4 } },
+  critic: { night: 4, frames: 2948, chef: { cadence: 0.56, serveAfter: 16, focus: 4, takeWithin: 0.7 } },
 };
 
 /**
@@ -51,9 +52,9 @@ function playToFrame(app, seed, { night: nightIndex, frames, chef: chefOpts }) {
 }
 
 const SCENES = {
-  /** Storm Tide in a Spring Tide rush: six tickets, a bowl half built, Shelby greeting her toast at the window. */
+  /** Storm Tide in a Spring Tide rush: six tickets, a rice bowl half built, milk turning PERFECT and Puffy's skewer at the window. */
   cover: (app, seed) => playToFrame(app, seed, PLAYS.cover),
-  /** Moon Tide in a Spring Tide rush: the Seahorse Twins hail their pudding at the window while rice glows perfect. */
+  /** Moon Tide: the Seahorse Twins' salad waits at the window while a pudding comes together and milk turns PERFECT. */
   moon: (app, seed) => playToFrame(app, seed, PLAYS.moon),
   /** The title header over the reef map, three nights into the campaign. */
   map(app, seed) {
@@ -62,7 +63,7 @@ const SCENES = {
     app.mapSel = 3;
     app.t = 4;
   },
-  /** King Tide in a Spring Tide rush: Madame Mantis rates live while her platter comes together and three stations glow. */
+  /** King Tide in a Spring Tide rush: Madame Mantis rates live while her platter waits on its last part, PERFECT in the steamer. */
   critic: (app, seed) => playToFrame(app, seed, PLAYS.critic),
   /** Results of Storm Tide with stars, stats and the Tide Shop. */
   results(app, seed) {

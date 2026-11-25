@@ -379,8 +379,8 @@ export function drawCustomer(ctx, customerId, x, y, r, mood = 1, changed = false
   ctx.drawImage(art.canvas, x - art.half, y - art.half, art.half * 2, art.half * 2);
 }
 
-/** How far (in portrait radii) a diner rises so their face clears the plate in front of them. */
-const FACE_LIFT = { shelby: 0.22, tortuga: 0.12 };
+/** How far each diner's mouth sits below the portrait centre, in portrait radii, so it can rest just above the plate rim. */
+const MOUTH = { puffy: 0.26, shelby: 0.28, twins: 0.12, tortuga: 0.2, mantis: 0.28 };
 
 /** The newest voice line of a ticket, optionally of one kind. */
 function lastLine(state, ticketId, kind = null) {
@@ -391,18 +391,19 @@ function lastLine(state, ticketId, kind = null) {
   return null;
 }
 
-/** A speech bubble of text at (x, y), at most `maxW` wide (wrapping if needed), its tail pointing at (tx, ty). */
-function bubble(ctx, str, x, y, maxW, tx, ty) {
-  font(ctx, 12, 800);
-  if (ctx.measureText(str).width > maxW - 14) font(ctx, 11, 800);
+/** A speech bubble of text with its right edge at `right` and top at y, at most `maxW` wide (wrapping if needed), its tail pointing at (tx, ty). */
+function bubble(ctx, str, right, y, maxW, tx, ty) {
+  font(ctx, 13, 800);
+  if (ctx.measureText(str).width > maxW - 16) font(ctx, 12, 800);
   const lines = [];
   for (const word of str.split(' ')) {
     const next = lines.length ? `${lines[lines.length - 1]} ${word}` : word;
-    if (lines.length && ctx.measureText(next).width <= maxW - 14) lines[lines.length - 1] = next;
+    if (lines.length && ctx.measureText(next).width <= maxW - 16) lines[lines.length - 1] = next;
     else lines.push(word);
   }
-  const w = Math.min(maxW, Math.max(...lines.map((l) => ctx.measureText(l).width)) + 14);
-  const h = lines.length * 14 + 6;
+  const w = Math.min(maxW, Math.max(...lines.map((l) => ctx.measureText(l).width)) + 16);
+  const h = lines.length * 15 + 7;
+  const x = right - w;
   const ax = Math.max(x + 12, Math.min(x + w - 12, tx));
   ctx.beginPath();
   ctx.moveTo(ax - 6, y + h / 2);
@@ -414,13 +415,13 @@ function bubble(ctx, str, x, y, maxW, tx, ty) {
   ctx.lineWidth = 2;
   ctx.strokeStyle = INK;
   ctx.stroke();
-  roundRect(ctx, x, y, w, h, 9);
+  roundRect(ctx, x, y, w, h, 10);
   ctx.fill();
   ctx.stroke();
   ctx.fillStyle = INK;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'alphabetic';
-  lines.forEach((l, i) => ctx.fillText(l, x + w / 2, y + 14.5 + i * 14));
+  lines.forEach((l, i) => ctx.fillText(l, x + w / 2, y + 16 + i * 15));
 }
 
 /** Madame Mantis's scorecard, raised over her plate with her live star rating. */
@@ -442,45 +443,69 @@ function scorecard(ctx, x, y, stars) {
   ctx.restore();
 }
 
+/** A small pink heart of size s rising from a delighted diner. */
+function heart(ctx, x, y, s, alpha) {
+  ctx.globalAlpha = alpha;
+  ctx.beginPath();
+  ctx.moveTo(x, y + s * 0.9);
+  ctx.bezierCurveTo(x - s * 1.4, y - s * 0.1, x - s * 0.6, y - s * 1.1, x, y - s * 0.35);
+  ctx.bezierCurveTo(x + s * 0.6, y - s * 1.1, x + s * 1.4, y - s * 0.1, x, y + s * 0.9);
+  ctx.fillStyle = '#ff7a9a';
+  ctx.fill();
+  ctx.lineWidth = 1.5;
+  ctx.strokeStyle = INK;
+  ctx.stroke();
+  ctx.globalAlpha = 1;
+}
+
+/** A diner facing the kitchen with portrait radius r at (x, y). */
+function diner(ctx, ticket, x, y, r, mood, t) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(-1, 1);
+  PORTRAITS[ticket.customerId](ctx, 0, 0, r, mood, t, ticket.changed);
+  ctx.restore();
+}
+
 /**
- * The diners at the Current Window, drawn inside `rect` ({x, y, w, h}) behind the plates: each
- * plate's customer peeks out above it, the front one large with a bubble for their newest line.
- * With the window empty, the longest-waiting customer peeks in from the top.
+ * The diners at the Current Window, drawn inside `rect` ({x, y, w, h}) before its shelves and
+ * plates: each plate's customer looks over it, mouth just above the rim, the front one larger
+ * and beaming. With the window empty, the longest-waiting customer peeks in from the top.
  */
 export function drawWindowDiners(ctx, state, t, rect) {
-  ctx.save();
-  ctx.beginPath();
-  ctx.rect(rect.x, rect.y, rect.w, rect.h);
-  ctx.clip();
   const waiting = state.tickets[0];
-  if (!state.pass.length && waiting) {
-    const r = 34;
-    const x = rect.x + rect.w * 0.64;
-    const y = rect.y + 14 + Math.sin(t * 1.6) * 3;
-    ctx.save();
-    ctx.translate(x, y);
-    ctx.scale(-1, 1);
-    PORTRAITS[waiting.customerId](ctx, 0, 0, r, patienceShare(waiting), t, waiting.changed);
-    ctx.restore();
-    const said = lastLine(state, waiting.id, 'wait');
-    if (said) bubble(ctx, said.text, rect.x + 6, y + r * 0.7 + 10, rect.w - 12, x - 6, y + r * 0.45);
-  }
+  if (!state.pass.length && waiting) diner(ctx, waiting, rect.x + rect.w * 0.6, rect.y + 32 + Math.sin(t * 1.6) * 3, 40, patienceShare(waiting), t);
   state.pass.forEach((plate, i) => {
     const ticket = ticketForPlate(state, plate);
     if (!ticket) return;
     const at = slotPoint(i);
-    const size = i === 0 ? 34 : 28;
-    const r = size / 0.62;
-    const x = at.x + size;
-    const y = at.y - size * (i === 0 ? 1 : 1.15) - r * (FACE_LIFT[ticket.customerId] ?? 0) + Math.sin(t * 2 + i) * 1.5;
-    ctx.save();
-    ctx.translate(x, y);
-    ctx.scale(-1, 1);
-    PORTRAITS[ticket.customerId](ctx, 0, 0, r, patienceShare(ticket), t, ticket.changed);
-    ctx.restore();
-    if (ticket.critic) scorecard(ctx, rect.x + 30, at.y - 32, state.critic?.live ?? 0);
-    const said = i === 0 ? lastLine(state, ticket.id) : null;
-    if (said && state.time - said.at < 4) bubble(ctx, said.text, rect.x + 4, rect.y + 1, rect.w - 8, x - size * 0.4, y - size * 0.5);
+    const front = i === 0;
+    const r = front ? 52 : 36;
+    const bob = front ? -Math.abs(Math.sin(t * 3)) * 3 : Math.sin(t * 2 + i) * 1.2;
+    const share = patienceShare(ticket);
+    const aside = (front ? 28 : 30) + (plate.recipeId === 'pudding' ? 14 : 0);
+    const x = at.x + aside;
+    const y = at.y - 30 - r * (MOUTH[ticket.customerId] ?? 0.25) + bob;
+    diner(ctx, ticket, x, y, r, front ? Math.max(0.86, share) : share, t);
+    if (front) {
+      const p = (t * 0.55) % 1;
+      heart(ctx, x + r * 0.62, y - r * 0.2 - p * 22, 5.5, Math.sin(p * Math.PI));
+    }
+    if (ticket.critic) scorecard(ctx, rect.x + 30, at.y - 40, state.critic?.live ?? 0);
   });
-  ctx.restore();
+}
+
+/**
+ * The newest voice line at the window in a bubble on the wall beside the hatch, its tail
+ * reaching in: the front diner's for a few seconds, or the waiting customer's while it is empty.
+ */
+export function drawWindowSpeech(ctx, state, rect) {
+  const plate = state.pass[0];
+  const ticket = plate ? ticketForPlate(state, plate) : null;
+  const waiting = !state.pass.length ? state.tickets[0] : null;
+  let said = null;
+  if (ticket) said = lastLine(state, ticket.id);
+  else if (waiting) said = lastLine(state, waiting.id, 'wait');
+  if (!said || (ticket && state.time - said.at >= 4)) return;
+  bubble(ctx, said.text, rect.x + 4, rect.y + 4, 166, rect.x + 24, rect.y + 32);
 }

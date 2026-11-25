@@ -14,11 +14,11 @@ export const UPGRADES = [
   { id: 'biggerPlate', name: 'Bigger Clam Plate', cost: 160, text: 'Room for 3 plates at the window, warm twice as long.' },
 ];
 
-/** A new campaign: only the first night open. */
+/** A new campaign: only the first night open, the help card and the first-shift coach still to come. */
 export function newCampaign() {
   return {
     unlocked: 1, stars: NIGHTS.map(() => 0), best: NIGHTS.map(() => 0),
-    purse: 0, upgrades: {}, settings: { sound: true, reducedMotion: false }, seenHelp: false,
+    purse: 0, upgrades: {}, settings: { sound: true, reducedMotion: false }, seenHelp: false, coachDone: false,
   };
 }
 

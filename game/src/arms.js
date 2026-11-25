@@ -18,6 +18,12 @@ export const ARM_REST = ARM_ROOTS.map((_, i) => ({ x: LAYOUT.octavia.x + (i - 3.
 /** Where a holding arm lifts its item so the player can see it: a row above the counter. */
 export const ARM_HOLD = ARM_ROOTS.map((_, i) => ({ x: 516 + i * 32.6, y: 404 + Math.abs(i - 3.5) * 3 }));
 
+/** Centre of an ingredient bin on the counter, where an arm reaches in to grab. */
+export function binPoint(index) {
+  const b = LAYOUT.bins;
+  return { x: b.x + index * (b.w + b.gap) + b.w / 2, y: b.y + 40 };
+}
+
 /** A fresh set of idle arms. */
 export function createArms() {
   return ARM_ROOTS.map((_, id) => ({

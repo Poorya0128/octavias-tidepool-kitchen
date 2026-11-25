@@ -1,7 +1,7 @@
 /**
  * The service HUD: the Current Board of shell tickets, the tide-clock timer, coins and Ink
- * Streak, the eight arm slots, the plate checklist, the Spring Tide gauge, key hints, toasts
- * and banners.
+ * Streak, the pause button, the eight arm slots, the plate checklist, the Spring Tide gauge, key
+ * hints, toasts, banners and the night-one coach.
  */
 
 import { ARM_COUNT, LAYOUT, PALETTE, TUNING } from '../config.js';
@@ -10,9 +10,10 @@ import { INGREDIENT, PREPS } from '../data/ingredients.js';
 import { RECIPE } from '../data/recipes.js';
 import { missingParts, patienceShare } from '../orders.js';
 import { nextStreakTier, streakMultiplier } from '../scoring.js';
-import { blob, check, clock, keycap, label, panel, ring, roundRect, sparkle, star, starRow, TAU, text } from './draw.js';
+import { blob, check, clock, keycap, label, panel, paragraph, ring, roundRect, sparkle, star, starRow, TAU, text } from './draw.js';
 import { drawCustomer } from './customers.js';
 import { drawFinishedDish, drawIngredient } from './food.js';
+import { drawOctaviaPortrait } from './octopus.js';
 
 const INK = PALETTE.ink;
 
@@ -187,7 +188,7 @@ function drawTicket(ctx, state, ticket, x, y, t) {
   label(ctx, `#${ticket.id}`, tx + tk.w - 8, ty + 26, 14, INK, 'right', 900);
   drawFinishedDish(ctx, ticket.recipeId, tx + tk.w - 42, ty + 54, 66);
   label(ctx, CUSTOMERS[ticket.customerId].name, tx + 8, ty + 78, 12, ticket.critic ? '#7a3fbf' : '#5a4470', 'left', 800);
-  text(ctx, recipe.name, tx + 8, ty + 92, { size: 13, color: INK, outline: null, weight: 900, maxWidth: tk.w - 14 });
+  text(ctx, recipe.name, tx + 8, ty + 92, { size: 13, color: INK, outline: null, weight: 900, maxWidth: tk.w - 22 });
   const onPlate = state.plate.recipeId === ticket.recipeId ? state.plate.parts : [];
   const missing = missingParts(ticket.recipeId, onPlate);
   const steps = recipe.parts.length + 1;
@@ -241,6 +242,24 @@ export function drawHud(ctx, state, t) {
   text(ctx, `INK x${mult}`, sx + 6, sy + 9, { size: 17, color: splat ? PALETTE.gold : PALETTE.pearl, line: 3, maxWidth: 64 });
   label(ctx, next ? `${state.streak}/${next}` : 'MAX', sx + 104, sy + 8, 11, PALETTE.pearl, 'right', 800);
   drawStatusStrip(ctx, state);
+  drawPauseButton(ctx);
+}
+
+/** The pause button beside the status strip: two pearl bars on a teal pebble (click it or press P). */
+function drawPauseButton(ctx) {
+  const b = LAYOUT.pauseBtn;
+  panel(ctx, b.x, b.y, b.w, b.h, { fill: '#1d6f7a', stroke: INK, r: 10, line: 2.5, shadow: false });
+  ctx.fillStyle = 'rgba(255,255,255,0.16)';
+  roundRect(ctx, b.x + 4, b.y + 3, b.w - 8, b.h * 0.36, 6);
+  ctx.fill();
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = INK;
+  for (const dx of [-8, 2]) {
+    roundRect(ctx, b.x + b.w / 2 + dx, b.y + 9, 6, b.h - 18, 2);
+    ctx.fillStyle = PALETTE.pearl;
+    ctx.fill();
+    ctx.stroke();
+  }
 }
 
 /**
@@ -326,20 +345,20 @@ function drawTideClock(ctx, state, cx, cy, r, t) {
 
 /** Under the timer: Madame Mantis's live rating on critic nights, else the coins to the next star. */
 function drawStatusStrip(ctx, state) {
-  const s = LAYOUT.status;
+  const s = { ...LAYOUT.status, w: LAYOUT.pauseBtn.x - LAYOUT.status.x - 6 };
   const critic = state.cfg.critic.length > 0;
   panel(ctx, s.x, s.y, s.w, s.h, { fill: critic ? '#3b2a4d' : '#12474f', stroke: critic ? PALETTE.gold : INK, r: 10, line: 2.5, shadow: false });
   if (critic) {
     const reviews = state.critic.reviews;
     const shown = state.critic.live ?? (reviews.length ? reviews[reviews.length - 1] : 0);
     label(ctx, state.critic.live !== null ? 'CRITIC LIVE' : 'CRITIC', s.x + 10, s.y + 23, 13, PALETTE.gold, 'left', 900);
-    starRow(ctx, s.x + 168, s.y + 17, 9, shown);
+    starRow(ctx, s.x + s.w - 48, s.y + 17, 8, shown);
     return;
   }
   const next = state.cfg.stars.find((target) => state.coins < target);
   const earned = state.cfg.stars.filter((target) => state.coins >= target).length;
-  for (let i = 0; i < 3; i++) star(ctx, s.x + 18 + i * 22, s.y + 17, 9, i < earned ? PALETTE.gold : 'rgba(20,30,40,0.5)', INK, 1.5);
-  label(ctx, next ? `next star at ${next} c` : 'three stars!', s.x + 86, s.y + 22, 13, PALETTE.pearl, 'left', 800);
+  for (let i = 0; i < 3; i++) star(ctx, s.x + 16 + i * 20, s.y + 17, 8.5, i < earned ? PALETTE.gold : 'rgba(20,30,40,0.5)', INK, 1.5);
+  text(ctx, next ? `next star at ${next} c` : 'three stars!', s.x + 78, s.y + 22, { size: 13, outline: null, maxWidth: s.w - 86 });
 }
 
 /** Short tags for what a held item is: still raw, cut on the board, or cooked. */
@@ -575,21 +594,142 @@ export function drawToasts(ctx, state) {
   });
 }
 
-/** Big banners: the Spring Tide warning and start, and the night's opening card. */
+/** Big banners: the Spring Tide warning and start, the night's opening card, then the coach. */
 export function drawBanners(ctx, state, t) {
   const r = state.rush;
+  let shown = false;
   if (r.warnAt !== null && !r.active) {
     const pulse = 0.5 + 0.5 * Math.sin(t * 8);
     banner(ctx, 'SPRING TIDE INCOMING', `tickets will rush in ${clock(state.cfg.rushes[r.index] - state.time)}`, 0.85 + pulse * 0.15);
+    shown = true;
   } else if (r.active && state.time - (r.endsAt - 24) < 2.2) {
     banner(ctx, 'SPRING TIDE!', 'orders flood in: keep every arm busy', 1);
+    shown = true;
   }
   if (state.time < 3.2) {
     const alpha = Math.min(1, (3.2 - state.time) * 1.5);
     ctx.globalAlpha = alpha;
     banner(ctx, `NIGHT ${state.nightIndex + 1}: ${state.cfg.name.toUpperCase()}`, state.cfg.tip, 1);
     ctx.globalAlpha = 1;
+    shown = true;
   }
+  if (state.coach?.text) drawCoach(ctx, state.coach, t, shown);
+}
+
+/** Where the coach's bubble may sit on the wall, in order of preference: clear of the tickets and the clock. */
+const COACH_SPOTS = [{ x: 124, y: 160 }, { x: 716, y: 196 }, { x: 124, y: 284 }, { x: 716, y: 284 }];
+
+/**
+ * The night-one coach: a speech bubble from a tiny Octavia with the step's text, the key to
+ * press and step dots. It takes the first wall spot away from its target (below any banner),
+ * and a bouncing arrow points at the target.
+ */
+function drawCoach(ctx, coach, t, low) {
+  const w = 360;
+  const h = 108;
+  const target = coach.target ?? null;
+  const near = (s) => target && Math.abs(target.x - (s.x + w / 2)) < w / 2 + 60 && Math.abs(target.y - (s.y + h / 2)) < h / 2 + 60;
+  const { x, y } = COACH_SPOTS.find((s) => !near(s) && !(low && s.y < 276)) ?? COACH_SPOTS[2];
+  const right = x > 640;
+  if (target) drawCoachArrow(ctx, target, { x: x + w / 2, y: y + h / 2 }, t);
+  const paper = ctx.createLinearGradient(0, y, 0, y + h);
+  paper.addColorStop(0, '#fffaf0');
+  paper.addColorStop(1, '#f3e2c4');
+  const tail = new Path2D();
+  const edge = right ? x : x + w;
+  const dir = right ? -1 : 1;
+  tail.moveTo(edge - dir * 4, y + 34);
+  tail.quadraticCurveTo(edge + dir * 22, y + 40, edge + dir * 34, y + 30);
+  tail.quadraticCurveTo(edge + dir * 20, y + 58, edge - dir * 4, y + 62);
+  tail.closePath();
+  ctx.fillStyle = 'rgba(3,18,22,0.35)';
+  roundRect(ctx, x + 4, y + 6, w, h, 18);
+  ctx.fill();
+  ctx.lineWidth = 3.5;
+  ctx.lineJoin = 'round';
+  ctx.strokeStyle = INK;
+  ctx.fillStyle = paper;
+  ctx.fill(tail);
+  ctx.stroke(tail);
+  roundRect(ctx, x, y, w, h, 18);
+  ctx.fill();
+  ctx.stroke();
+  ctx.fill(tail);
+  ctx.strokeStyle = 'rgba(255,209,102,0.9)';
+  ctx.lineWidth = 2;
+  roundRect(ctx, x + 5, y + 5, w - 10, h - 10, 14);
+  ctx.stroke();
+  const mx = x + 48;
+  const my = y + h / 2;
+  const sea = ctx.createRadialGradient(mx, my - 10, 4, mx, my, 38);
+  sea.addColorStop(0, '#5fd0dc');
+  sea.addColorStop(1, '#1b6f86');
+  blob(ctx, mx, my, 36, sea, null);
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(mx, my, 36, 0, TAU);
+  ctx.clip();
+  drawOctaviaPortrait(ctx, mx, my + 13, 0.3, t, 'wave');
+  ctx.restore();
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = INK;
+  ctx.beginPath();
+  ctx.arc(mx, my, 36, 0, TAU);
+  ctx.stroke();
+  const tx = x + 96;
+  let kx = tx;
+  if (coach.key) {
+    label(ctx, 'PRESS', tx, y + 30, 12, PALETTE.coralDark, 'left', 900);
+    const kw = keycap(ctx, coach.key, tx + 48, y + 25, { size: 14, fill: PALETTE.gold, align: 'left' });
+    kx = tx + 56 + kw;
+  } else label(ctx, "OCTAVIA'S TIP", tx, y + 30, 12, PALETTE.coralDark, 'left', 900);
+  const total = coach.total ?? 0;
+  const step = Math.min(total, Math.max(1, coach.step ?? 1));
+  if (total > 0) label(ctx, `${step}/${total}`, x + w - 16, y + 30, 12, '#5a4470', 'right', 900);
+  for (let k = 0; k < total; k++) {
+    const dx = x + w - 46 - (total - 1 - k) * 12;
+    if (dx < kx + 6) continue;
+    blob(ctx, dx, y + 26, k === step - 1 ? 5 : 3.6, k < step ? PALETTE.gold : 'rgba(59,42,77,0.18)', INK, 1.5);
+  }
+  paragraph(ctx, coach.text, tx, y + 54, w - 112, 18, 15, INK, 800);
+}
+
+/** A dashed ring round the coach's target and a gold arrow bouncing toward it from the bubble side. */
+function drawCoachArrow(ctx, target, from, t) {
+  const dx = from.x - target.x;
+  const dy = from.y - target.y;
+  const len = Math.hypot(dx, dy) || 1;
+  const bounce = Math.abs(Math.sin(t * 5)) * 12;
+  ctx.setLineDash([7, 6]);
+  ctx.lineDashOffset = -t * 18;
+  for (const [lw, col] of [[6, 'rgba(59,42,77,0.7)'], [3, PALETTE.gold]]) {
+    ctx.lineWidth = lw;
+    ctx.strokeStyle = col;
+    ctx.beginPath();
+    ctx.arc(target.x, target.y, 32 + Math.sin(t * 5) * 2, 0, TAU);
+    ctx.stroke();
+  }
+  ctx.setLineDash([]);
+  ctx.lineDashOffset = 0;
+  ctx.save();
+  ctx.translate(target.x + (dx / len) * (38 + bounce), target.y + (dy / len) * (38 + bounce));
+  ctx.rotate(Math.atan2(-dy, -dx));
+  ctx.beginPath();
+  ctx.moveTo(0, 0);
+  ctx.lineTo(-22, -17);
+  ctx.lineTo(-22, -7);
+  ctx.lineTo(-48, -7);
+  ctx.lineTo(-48, 7);
+  ctx.lineTo(-22, 7);
+  ctx.lineTo(-22, 17);
+  ctx.closePath();
+  ctx.fillStyle = PALETTE.gold;
+  ctx.fill();
+  ctx.lineWidth = 3;
+  ctx.lineJoin = 'round';
+  ctx.strokeStyle = INK;
+  ctx.stroke();
+  ctx.restore();
 }
 
 /** A wave-shaped banner across the kitchen wall. */
